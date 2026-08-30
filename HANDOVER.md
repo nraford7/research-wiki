@@ -8,9 +8,10 @@ every entry reads as a real article and links back to its source sections.
 
 An enriched page has, in order:
 
-1. A **narrative lead** (~350–400 words for concepts; ~250–350 for thinkers) that
-   replaces the old one-line definition — placed between the `# Title` and the first
-   `## In <bible>` section.
+1. A **standalone encyclopedic entry** that replaces the old one-line definition —
+   placed between the `# Title` and the first `## In <bible>` section. Length scales to
+   the source: rich pages ~1,200–1,500 words; thin, single-sourced pages 500–900.
+   **Never pad or invent to hit a length** — honesty over length. See the v2 house style.
 2. `overview: true` in the frontmatter. (This flag tells the atlas to hide the raw
    `## In <bible>` bullet sections in the reader and show a **Sources** block instead.
    The bullets stay in the markdown for Obsidian + re-ingest.)
@@ -32,26 +33,63 @@ cd /Users/noahraford/magic/wiki
 for f in concepts/*.md thinkers/*.md; do grep -q '^overview: true' "$f" || echo "$f"; done
 ```
 
-## The house style (locked by the wu-wei pilot — keep it)
+## The house style — v2 (locked 2026-08-30; supersedes the pilot style)
+
+Write each entry as a **standalone encyclopedic analysis** of the concept — faithful
+summary + how it interrelates with neighbouring ideas — usable for any exploration of
+the material. **Not** a book-framed essay.
 
 Voice: plain, intelligent, concrete — a great ideas writer for a curious
 non-specialist. Common words, active voice, varied sentence length. No hedging or filler.
 
-**Concept arc** (what → why → tension): (1) what the concept actually IS, in plain
-terms; (2) why it matters for the book's question — how minds / intelligence / life /
-AI work, and whether machines could share in them; (3) the central live disagreement,
-drawn from the page's own `## In <bible>` material, so the reader knows what's contested.
+**Cover (as flowing prose, never as headers/checklist):** (1) what the concept IS in
+depth — meaning, origin, internal distinctions; (2) how it works — structure, key
+variants, the moves that make it distinctive; (3) its interrelationships — how it
+connects to / depends on / contrasts with the neighbouring concepts, thinkers and
+traditions in THIS page's material (name them, link with `[[concepts/slug]]` /
+`[[thinkers/slug]]` — prefer slugs that appear in the page's own `## See also`); (4)
+the live disagreements in the idea itself — what's contested, and by whom.
 
-**Thinker arc:** (1) who they are and their one central move/idea; (2) what they
-contribute to the book's question; (3) where they're contested or who they're set against.
+**Thinker entries:** identity-first — who they are and their central move — then their
+contribution and where they're contested; same standalone, non-book-framed voice.
 
-**Fidelity:** weave only from that page's existing per-bible material; don't invent.
-Light citations — one or two `[Surname, YYYY]` at pivotal claims; the detailed
-citations already live in the `## In` sections below.
+**No meta-framing (hard rule):** never reference "the book", "the book's question",
+"a book about minds and machines", or "for a book asking/about". Never editorialize
+significance ("rewires the whole question", "the whole frame shifts", "why it matters").
+Analyze the ideas directly. Where the sources discuss AI / minds / machines, keep the
+substance — stated as the idea itself and attributed to its author, not as "what the
+bible says".
+
+**Write about the ideas, not the source documents (hard rule):** the entry analyses the
+*ideas*, never the research bibles that hold them. NEVER make a bible / document / "the page"
+the subject: no "the bible(s)", "both bibles", "each bible", "this bible", "Chapter 2",
+"Q4/Q8", "the corpus", "the source material" / "the sourced material", "the page", "the
+sources agree/say", "position map", or the "Camp (a)/(b)/(c)/(d)" taxonomy. Attribute claims
+to their real authors/traditions and cite normally. You MAY `[[bibles/slug]]`-link, but the
+prose is never a review of the bibles. Write "across Taoist and Confucian thought", not
+"across both bibles"; "one reading holds… another denies…", not "the sourced material is split".
+
+**Length scales to source:** rich pages ~1,200–1,500 words; thin, single-sourced pages
+500–900. Never pad, repeat, or invent to hit a length.
+
+**Fidelity:** weave only from that page's existing per-bible material; don't invent
+facts or citations. Reuse the real author citation tokens (`[Surname, YYYY]`) — but NEVER
+carry the document-pointer tokens into prose: drop `[bible §N]`, `[chN-qN-…]`,
+`[corpus synthesis]`, `[round2 synthesis]`, `[bible synthesis]` and the like (they name the
+source doc, not a claim). A few well-placed cites, not one per sentence.
 
 **Banned** (house rules): "load-bearing", "ship/shipped", "delve", "tapestry",
-"testament to", "at its core", "in essence", "it's worth noting"; no "This concept…"
-openings; no em-dash pile-ups.
+"testament to", "at its core", "in essence", "it's worth noting"; document-talk ("the
+bible(s)", "both bibles", "the corpus", "the source(d) material", "the page", "Chapter N",
+"Q4/Q8", "Camp (a–d)", "position map", `[bible §…]`, `[chN-qN…]`); no "This concept…"
+openings; no em-dash pile-ups; no letter-spaced EMIR.
+
+**Gold-standard exemplar:** the `buddha-nature` entry (~1,450 words) — match its depth
+and standalone voice, scaling length to how rich each page's sourcing is.
+
+> Note: the 8 pilots (wu-wei, enactivism, relational-ontology, panpsychism,
+> basal-cognition, tacit-knowledge, creativity-as-reception, hard-problem-of-consciousness)
+> predate v2 — they're book-framed and ~550w. Re-run them at v2 for consistency.
 
 ## The process (per page)
 

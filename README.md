@@ -46,7 +46,11 @@ deep research  ─▶  BIBLES        the raw sources: long literature reviews, o
   and genuine disagreements into **debates**, each with quoted positions and citations.
 - **A bible-styled atlas** (`wiki.html`) — one self-contained, offline HTML file:
   a community-colored knowledge graph + a searchable index + a reading pane. Shareable;
-  no server, no Obsidian needed.
+  no server, no Obsidian needed. The graph labels its clusters at rest; selecting a node
+  highlights it and its immediate neighbours (dimming the rest) and labels them; topic
+  chips isolate one kind of entry (click more to add kinds back); a *Clear selection*
+  button and a collapsible *Panel* round it out. Labels and strokes hold a constant size
+  as you zoom.
 - **Chat with the corpus** — the 17 bibles are extracted to a searchable primary-text
   index; a project rule makes plain questions retrieve and answer from the *source*,
   not the summaries.
@@ -80,9 +84,11 @@ deep research  ─▶  BIBLES        the raw sources: long literature reviews, o
   → an answer citing [Thompson, 2022] vs [Levin, 2023], linking [[debates/does-cognition-require-life]]
 ```
 
-A concept page looks like: a plain-language **overview**, then a `## In <bible>`
-section per source (positions + citations), then `See also` links, and — once
-enriched — a **Sources** block that deep-links to the exact bible sections.
+A concept or thinker page looks like: a standalone **narrative overview** that analyses
+the idea and how it interrelates with its neighbours (length scaled to how much the
+sources support — no padding, no book-framing), then a `## In <bible>` section per source
+(positions + citations), then `See also` links, and a **Sources** block that deep-links to
+the exact bible sections. All 134 concepts and 117 thinkers are enriched.
 
 ---
 

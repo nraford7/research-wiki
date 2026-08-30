@@ -314,7 +314,7 @@ ATLAS_CSS = """
 #home-btn,#panel-btn{font:600 .72rem var(--sans);letter-spacing:.04em;border:1px solid var(--line);cursor:pointer;padding:.5rem .7rem;background:var(--paper);color:var(--ink);}
 #home-btn{background:var(--ink);color:var(--paper);border-color:var(--ink);}
 #atlas{display:grid;grid-template-columns:minmax(300px,36%) 1fr;height:calc(100vh - 66px);}
-#atlas.collapsed{grid-template-columns:0 1fr;}
+#atlas.collapsed{grid-template-columns:1fr;}
 .left-pane{border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:var(--paper-raised);min-width:0;}
 #atlas.collapsed .left-pane{display:none;}
 .pane-tabs{display:flex;border-bottom:1px solid var(--line);flex:none;}
@@ -335,16 +335,26 @@ ATLAS_CSS = """
 .svg-wrap{flex:1;overflow:hidden;position:relative;min-height:0;}
 #atlas-graph{width:100%;height:100%;cursor:grab;}
 #atlas-graph.grabbing{cursor:grabbing;}
-#atlas-graph line{stroke:var(--line);stroke-opacity:.5;}
-#atlas-graph circle{cursor:pointer;stroke:var(--paper);stroke-width:1.2;transition:opacity .12s;}
+#atlas-graph line{stroke:var(--line);stroke-opacity:.5;vector-effect:non-scaling-stroke;}
+#atlas-graph circle{cursor:pointer;stroke:var(--paper);stroke-width:1.2;transition:opacity .12s;vector-effect:non-scaling-stroke;}
 #atlas-graph circle.dim{opacity:.12;}
+#atlas-graph circle.neighbor{opacity:1;stroke:var(--ink);stroke-width:1.6;}
 #atlas-graph circle.active{stroke:var(--ink);stroke-width:2.5;}
+#atlas-graph line.edge-active{stroke:var(--ink);stroke-opacity:.8;stroke-width:1.4;}
+#atlas-graph line.edge-dim{stroke-opacity:.06;}
+#atlas-graph text{font-family:var(--sans);paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round;fill:var(--ink);pointer-events:none;vector-effect:non-scaling-stroke;}
+#atlas-graph text.cluster-title{font-weight:700;fill:var(--accent);opacity:.92;}
+#atlas-graph text.node-label.sel{font-weight:700;}
+#atlas-graph text.node-label.nbr{font-weight:600;fill:var(--muted);}
+#graph-clear{position:absolute;top:8px;right:8px;z-index:5;font:600 .62rem var(--sans);letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);padding:4px 9px;cursor:pointer;border-radius:2px;}
+#graph-clear:hover{border-color:var(--ink);}
 .legend{padding:8px 10px;border-top:1px solid var(--line);font:600 .68rem/1.5 var(--sans);max-height:26%;overflow:auto;flex:none;}
 .legend .lg{display:flex;align-items:center;gap:7px;cursor:pointer;padding:1px 0;}
 .legend .sw{width:11px;height:11px;border-radius:50%;flex:none;}
 .typefilter{padding:6px 10px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;flex:none;}
 .typefilter button{font:600 .64rem var(--sans);letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line);background:var(--paper);color:var(--muted);padding:3px 8px;cursor:pointer;border-radius:2px;}
 .typefilter button.off{opacity:.35;text-decoration:line-through;}
+.typefilter button.on{background:var(--accent);color:var(--paper);border-color:var(--accent);opacity:1;}
 .reader{overflow:auto;padding:40px clamp(24px,5vw,72px) 100px;}
 .reader .doc{max-width:760px;margin:0 auto;}
 .reader .kicker{font:700 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
@@ -358,6 +368,30 @@ ATLAS_CSS = """
 #tooltip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);font:600 .72rem var(--sans);padding:4px 8px;border-radius:3px;opacity:0;transition:opacity .1s;z-index:20;max-width:280px;}
 .search-results{list-style:none;padding:0;margin:1em 0;}
 .search-results li{padding:6px 0;border-bottom:1px solid var(--line);}
+#mobile-nav{display:none;}
+@media (max-width:760px){
+  body{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+  .masthead{flex:none;padding:10px 14px;gap:8px 12px;}
+  .masthead h1{font-size:1.15rem;}
+  .masthead .brand{display:none;}
+  .prov{display:none;}
+  .mast-controls{flex:1 1 100%;gap:6px;}
+  #panel-btn{display:none;}
+  #home-btn{padding:.45rem .6rem;}
+  #search{flex:1;min-width:0;}
+  #atlas{display:flex;flex:1;min-height:0;height:auto;grid-template-columns:none;}
+  #atlas .left-pane{flex:1;width:100%;min-width:0;min-height:0;border-right:none;display:flex;}
+  #atlas .reader{flex:1;width:100%;min-width:0;min-height:0;}
+  #atlas:not(.show-read) .reader{display:none;}
+  #atlas.show-read .left-pane{display:none;}
+  .reader{padding:22px 16px 24px;}
+  .legend{max-height:22%;}
+  #mobile-nav{display:flex;flex:none;border-top:1px solid var(--line);background:var(--paper-raised);}
+  #mobile-nav button{flex:1;font:600 .7rem var(--sans);letter-spacing:.06em;text-transform:uppercase;
+    border:none;border-right:1px solid var(--line);background:none;color:var(--muted);padding:13px 6px;cursor:pointer;}
+  #mobile-nav button:last-child{border-right:none;}
+  #mobile-nav button.active{color:var(--accent);box-shadow:inset 0 2px 0 var(--accent);background:var(--paper);}
+}
 """
 
 
@@ -368,14 +402,15 @@ def _svg(graph):
         a, b = node_by_id.get(e["s"]), node_by_id.get(e["t"])
         if not a or not b:
             continue
-        lines.append(f'<line x1="{a["x"]}" y1="{a["y"]}" x2="{b["x"]}" y2="{b["y"]}"/>')
+        lines.append(f'<line x1="{a["x"]}" y1="{a["y"]}" x2="{b["x"]}" y2="{b["y"]}" '
+                     f'data-s="{a["key"]}" data-t="{b["key"]}"/>')
     circles = []
     for n in graph["nodes"]:
         r = round(3 + (n["size"] ** 0.5) * 1.6, 1)
         color = PALETTE[n["community"] % len(PALETTE)]
         circles.append(
             f'<circle cx="{n["x"]}" cy="{n["y"]}" r="{r}" fill="{color}" '
-            f'data-page="{n["key"]}" data-community="{n["community"]}" '
+            f'data-page="{n["key"]}" data-community="{n["community"]}" data-type="{n["type"]}" '
             f'data-label="{_html.escape(n["label"], quote=True)}"/>')
     return ('<g class="edges">' + "".join(lines) + '</g>'
             '<g class="nodes">' + "".join(circles) + '</g>')
@@ -430,7 +465,7 @@ def _front_door_html(about_html, front, unresolved_html, prov):
         parts.append('</p>')
     parts.append(
         '<div class="howto"><strong>How to use this</strong><ul>'
-        '<li><strong>Graph</strong> tab (left): click any node to open that entry here; hover for its name.</li>'
+        '<li><strong>Graph</strong> tab (left): click a node to open it and light up its neighbours; <em>Clear selection</em> resets and shows the cluster names. Topic chips isolate one kind — click more to add them back.</li>'
         '<li><strong>Index</strong> tab (left): browse every entry grouped by kind; filter as you type.</li>'
         '<li><strong>Search</strong> (top) finds any concept, thinker, or idea by name or meaning.</li>'
         '<li>Inside a page, follow the <em>See also</em> links to walk the ideas.</li>'
@@ -485,7 +520,7 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
     <input id="search" type="search" placeholder="Search…" autocomplete="off">
   </div>
 </header>
-<div id="atlas">
+<div id="atlas" class="show-read">
   <aside class="left-pane">
     <div class="pane-tabs">
       <button class="tab active" data-view="graph">Graph</button>
@@ -493,7 +528,7 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
     </div>
     <div class="pane-body">
       <section id="view-graph">
-        <div class="svg-wrap"><svg id="atlas-graph" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet">{svg}</svg></div>
+        <div class="svg-wrap"><button id="graph-clear" title="Clear graph selection" hidden>Clear selection</button><svg id="atlas-graph" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet">{svg}</svg></div>
         <div class="typefilter">{typefilter}</div>
         <div class="legend">{legend}</div>
       </section>
@@ -505,6 +540,11 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
   </aside>
   <main class="reader" id="reader"></main>
 </div>
+<nav id="mobile-nav">
+  <button data-m="graph">Graph</button>
+  <button data-m="index">Index</button>
+  <button data-m="read">Read</button>
+</nav>
 <div id="tooltip"></div>
 <script type="application/json" id="PAGES">{pages_json}</script>
 <script type="application/json" id="GRAPH">{graph_json}</script>
@@ -530,6 +570,7 @@ function renderPage(key){
   reader.innerHTML = '<div class="doc"><p class="kicker">'+esc(p.type)+
     (p.status?'<span class="status-chip">'+esc(p.status)+'</span>':'')+'</p>'+p.html+'</div>';
   setActive(key); reader.scrollTop=0;
+  if(typeof mobileShow==='function' && isMobile()) mobileShow('read');
 }
 // bible entries open the full bundled research bible (new tab); everything else
 // renders in the reader
@@ -544,12 +585,61 @@ document.addEventListener('click', e=>{
   const c = e.target.closest('a[data-community]');
   if(c){ e.preventDefault(); setView('graph'); highlightCommunity(+c.dataset.community); }
 });
+// ---- graph selection, neighbour highlight, labels, cluster titles ----
+const svgNS='http://www.w3.org/2000/svg';
+const lines=[...svg.querySelectorAll('line')];
+const circleByKey={}; circles.forEach(c=>circleByKey[c.dataset.page]=c);
+const adj={};
+lines.forEach(l=>{ const s=l.dataset.s,t=l.dataset.t; if(!s||!t)return;
+  (adj[s]=adj[s]||new Set()).add(t); (adj[t]=adj[t]||new Set()).add(s); });
+const commLabel={}; document.querySelectorAll('.legend .lg').forEach(l=>commLabel[l.dataset.community]=l.textContent.trim());
+const commMembers={}; circles.forEach(c=>{ (commMembers[c.dataset.community]=commMembers[c.dataset.community]||[]).push(c); });
+const labelG=document.createElementNS(svgNS,'g'); labelG.setAttribute('class','labels'); svg.appendChild(labelG);
+const clearBtn=document.getElementById('graph-clear');
+let selState={mode:'default'};
+const vis=c=>c.style.display!=='none';
+function clearLabels(){ while(labelG.firstChild) labelG.removeChild(labelG.firstChild); }
+const trunc=(s,n)=>String(s).length>n?String(s).slice(0,n-1)+'…':String(s);
+function labelScale(){ return vb.w/1000; } // keep label px ~constant across zoom
+function addLabel(x,y,text,cls,base){ const t=document.createElementNS(svgNS,'text');
+  t.setAttribute('x',x); t.setAttribute('y',y); t.setAttribute('text-anchor','middle');
+  t.setAttribute('class',cls); t.setAttribute('data-base',base);
+  t.setAttribute('font-size', base*labelScale());
+  t.textContent=text; labelG.appendChild(t); }
+function updateLabelSizes(){ const s=labelScale();
+  labelG.querySelectorAll('text').forEach(t=>t.setAttribute('font-size',(+t.getAttribute('data-base'))*s)); }
+function centroid(ms){ let sx=0,sy=0,n=0; ms.forEach(c=>{ if(!vis(c))return; sx+=+c.getAttribute('cx'); sy+=+c.getAttribute('cy'); n++; }); return n?[sx/n,sy/n]:null; }
+function showClusterTitles(){ clearLabels();
+  Object.keys(commMembers).forEach(cid=>{ const c=centroid(commMembers[cid]); if(c) addLabel(c[0],c[1],commLabel[cid]||('Community '+cid),'cluster-title',17); }); }
+function clearGraph(){ circles.forEach(c=>c.classList.remove('active','dim','neighbor'));
+  lines.forEach(l=>l.classList.remove('edge-active','edge-dim')); }
+function setDefault(){ selState={mode:'default'}; clearGraph(); showClusterTitles(); clearBtn.hidden=true; }
 function setActive(key){
-  circles.forEach(c=>{ c.classList.remove('active','dim'); });
-  if(key){ const hit=circles.find(c=>c.dataset.page===key);
-    if(hit){ circles.forEach(c=>c.classList.add('dim')); hit.classList.remove('dim'); hit.classList.add('active'); } }
+  const hit = key && circleByKey[key];
+  if(!hit){ setDefault(); return; }
+  selState={mode:'node',key:key};
+  clearGraph(); clearLabels();
+  const nb = adj[key] || new Set();
+  circles.forEach(c=>{ const k=c.dataset.page;
+    if(k===key) c.classList.add('active'); else if(nb.has(k)) c.classList.add('neighbor'); else c.classList.add('dim'); });
+  lines.forEach(l=>{ const s=l.dataset.s,t=l.dataset.t;
+    if((s===key&&nb.has(t))||(t===key&&nb.has(s))) l.classList.add('edge-active'); else l.classList.add('edge-dim'); });
+  const sc=circleByKey[key], r=+sc.getAttribute('r');
+  // neighbours first, selected label LAST so it always paints on top
+  nb.forEach(k=>{ const c=circleByKey[k]; if(c&&vis(c)) addLabel(+c.getAttribute('cx'), +c.getAttribute('cy')-(+c.getAttribute('r'))-3, trunc(c.dataset.label,24), 'node-label nbr', 11); });
+  addLabel(+sc.getAttribute('cx'), +sc.getAttribute('cy')-r-6, trunc(sc.dataset.label,44), 'node-label sel', 21);
+  clearBtn.hidden=false;
 }
-function highlightCommunity(cid){ circles.forEach(c=> c.classList.toggle('dim', +c.dataset.community!==cid)); }
+function highlightCommunity(cid){
+  selState={mode:'community',cid:cid};
+  clearGraph(); clearLabels();
+  circles.forEach(c=> c.classList.toggle('dim', +c.dataset.community!==cid));
+  const c=centroid(commMembers[cid]||[]); if(c) addLabel(c[0],c[1],commLabel[cid]||('Community '+cid),'cluster-title',17);
+  clearBtn.hidden=false;
+}
+function refreshGraph(){ if(selState.mode==='node') setActive(selState.key);
+  else if(selState.mode==='community') highlightCommunity(selState.cid); else showClusterTitles(); }
+clearBtn.addEventListener('click', setDefault);
 // node interactions
 circles.forEach(c=>{
   c.addEventListener('click',()=>openEntry(c.dataset.page));
@@ -558,10 +648,24 @@ circles.forEach(c=>{
   c.addEventListener('mouseleave',()=>{ tip.style.opacity=0; });
 });
 document.querySelectorAll('.legend .lg').forEach(l=>l.addEventListener('click',()=>highlightCommunity(+l.dataset.community)));
-const offTypes=new Set();
+// topic chips: default shows ALL; first click isolates that type; extra clicks
+// add types back in; clicking an active type removes it (empty -> back to all)
+let activeTypes=null; // null = all types shown
+function applyTypeFilter(){
+  circles.forEach(c=>{ c.style.display = (activeTypes===null||activeTypes.has(c.dataset.type))?'':'none'; });
+  document.querySelectorAll('.typefilter button').forEach(b=>{
+    const on = activeTypes!==null && activeTypes.has(b.dataset.type);
+    b.classList.toggle('on', on);
+    b.classList.toggle('off', activeTypes!==null && !on);
+  });
+  refreshGraph();
+}
 document.querySelectorAll('.typefilter button').forEach(b=>b.addEventListener('click',()=>{
-  const t=b.dataset.type; if(offTypes.has(t)){offTypes.delete(t);b.classList.remove('off');}else{offTypes.add(t);b.classList.add('off');}
-  circles.forEach(c=> c.style.display = offTypes.has(c.dataset.page.split('/')[0]) ? 'none':'');
+  const t=b.dataset.type;
+  if(activeTypes===null) activeTypes=new Set([t]);
+  else if(activeTypes.has(t)){ activeTypes.delete(t); if(!activeTypes.size) activeTypes=null; }
+  else activeTypes.add(t);
+  applyTypeFilter();
 }));
 // Home
 document.getElementById('home-btn').addEventListener('click',showFront);
@@ -595,7 +699,7 @@ idxFilter.addEventListener('input',()=>{
 });
 // pan + zoom
 let vb={x:0,y:0,w:1000,h:1000};
-function setVB(){ svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`); }
+function setVB(){ svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`); updateLabelSizes(); }
 svg.addEventListener('wheel',e=>{ e.preventDefault(); const f=e.deltaY<0?0.9:1.1;
   const r=svg.getBoundingClientRect(); const mx=vb.x+(e.clientX-r.left)/r.width*vb.w, my=vb.y+(e.clientY-r.top)/r.height*vb.h;
   vb.w*=f; vb.h*=f; vb.x=mx-(mx-vb.x)*f; vb.y=my-(my-vb.y)*f; setVB(); },{passive:false});
@@ -615,7 +719,17 @@ search.addEventListener('input',()=>{
     .slice(0,40);
   reader.innerHTML='<div class="doc"><p class="kicker">Search</p><h2>'+hits.length+' result'+(hits.length===1?'':'s')+' for “'+esc(q)+'”</h2><ul class="search-results">'+
     hits.map(([k,p])=>'<li><a data-page="'+k+'">'+esc(p.title)+'</a> <span class="prov" style="text-transform:none;letter-spacing:0">'+esc(p.type)+'</span></li>').join('')+'</ul></div>';
+  if(isMobile()) mobileShow('read');
 });
+// mobile single-panel nav: switch Graph / Index / Read (one panel at a time)
+const isMobile=()=>matchMedia('(max-width:760px)').matches;
+function mobileShow(m){
+  if(m==='read'){ atlas.classList.add('show-read'); }
+  else { atlas.classList.remove('show-read'); setView(m); }
+  document.querySelectorAll('#mobile-nav button').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+}
+document.querySelectorAll('#mobile-nav button').forEach(b=>b.addEventListener('click',()=>mobileShow(b.dataset.m)));
+mobileShow('read');
 showFront();
 """
 

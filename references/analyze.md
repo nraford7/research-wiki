@@ -20,7 +20,7 @@ Empty result (nothing ingested since the last analyze) → nothing to do; exit. 
 
 For each concept/thinker page whose `bibles:` frontmatter intersects the scope AND lists ≥2 bibles, compare its per-bible `## In <bible>` sections:
 
-- **Genuine disagreement** (the bibles make incompatible claims about the same thing) → create or update a `debates/<slug>.md` page using the debate template. The positions table must quote both sides, cite each per the citation grammar, and attribute each to its source bible via `[[bibles/<slug>]]`.
+- **Genuine disagreement** (the bibles make incompatible claims about the same thing) → create or update a `debates/<slug>.md` page using the debate template. The positions table must quote both sides, cite each per the citation grammar, and attribute each to its source bible via `[[bibles/<slug>]]`. **The lead must be a rich standalone synthesis, not a one-paragraph stub — see "Lead enrichment standard" below.**
 - **Genuine agreement across ≥3 bibles** → record as a theme candidate for Pass B.
 
 ## Pass B — emergent themes
@@ -31,6 +31,42 @@ Cluster the theme candidates into `themes/<slug>.md` pages (theme template). See
 - Otherwise derive clusters from frontmatter co-occurrence: pages sharing bibles in their `bibles:` list plus shared outbound wikilinks.
 
 Graphify is an optional enhancer — never require it.
+
+Each theme page's lead must meet the **Lead enrichment standard** below — not a one-paragraph stub.
+
+## Lead enrichment standard (required for every theme & debate)
+
+Synthesis pages are the reader's payoff, so their **lead** — the prose between the
+`# Title` and the first structural block (the positions table, or `## Evidence by bible`)
+— must be a genuine standalone essay, never a single orienting paragraph. Match the
+concept/thinker house style in `HANDOVER.md` (v2):
+
+- **~400–700 words**, scaled to how much evidence/positions the page holds; never pad.
+- Plain, analytical voice. **No book-framing** ("the book", "the book's question",
+  "matters for the book") and no significance-editorializing. Analyze the ideas directly.
+- **Write about the ideas, not the source documents** (hard rule): never make a bible /
+  "the page" / "the corpus" the subject — no "both bibles", "each bible", "Chapter 2",
+  "Q4/Q8", "the source(d) material", "the sources agree", "position map", "Camp (a–d)".
+  Attribute claims to their real authors/traditions and cite normally; `[[bibles/slug]]`
+  links are fine, but the prose is never a review of the bibles. Say "across ritual and
+  creative practice", not "across both bibles".
+- **Themes:** state the shared pattern precisely; show how it appears across the relevant
+  traditions/domains (name them, not the source docs), drawing on the page's own
+  `## Evidence by bible`; name and `[[link]]` the concepts/thinkers it unifies; close on
+  the nuance or the failure mode it warns against.
+- **Debates:** state the question and why it is genuinely contested; lay out the positions
+  in prose (complementing, not duplicating, the table); close on what is actually
+  unresolved or where the sides talk past each other.
+- **Fidelity:** reuse only the real author citation tokens already present (`[Surname, YYYY]`);
+  never invent, and never carry document-pointer tokens (`[bible §N]`, `[chN-qN-…]`,
+  `[corpus/round2/bible synthesis]`) into the prose.
+- Keep the structured sections (table / `## Evidence by bible` / `## Related` /
+  `## Where the bibles agree` / `## Open questions` / `## See also`) **intact below** the lead.
+- **Do NOT set `overview: true`** on themes/debates — unlike concept/thinker pages, their
+  structured sections must stay visible in the atlas (only the lead is enriched, in place).
+
+Practical splice: to enrich leads in bulk without disturbing the sections, draft each lead
+as JSON `{slug: markdown}` and insert with a lead-only splice (replace title→first-`## `/`|`/`- `).
 
 ## Pass C — hygiene
 
@@ -47,6 +83,7 @@ Run these checks and fix the mechanical ones; queue judgment calls for the repor
   For each link `[[<type>/<slug>]]`, confirm `test -f /Users/noahraford/magic/wiki/<type>/<slug>.md`. A miss is a dangling link — fix the link or create the missing stub. Ignore single-letter placeholder slugs (`x`, `y`) that appear only inside a page's own literal template example.
 - **Orphans:** pages that never appear in the link list above (nothing links to them). Note in the report.
 - **Stale stubs:** pages with `status: stub` older than the previous analyze — flag for enrichment.
+- **Thin synthesis leads:** any `themes/` or `debates/` page whose lead (the prose before its first `## `/table/`- ` block) is under ~250 words → it is an un-enriched stub; enrich it per the **Lead enrichment standard** above before finishing.
 - **Index ↔ frontmatter drift:** every page appears once in `index.md` under the right type with the right `(N bibles)` count; fix mismatches.
 - **Alias conflicts** queued by ingest — list them for human judgment.
 
