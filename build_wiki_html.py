@@ -182,6 +182,25 @@ def load_graph(graph_path, pages, log=lambda *a: None):
         if s in keep and t in keep:
             edges.append({"s": s, "t": t, "relation": e.get("relation", ""),
                           "confidence": e.get("confidence", "")})
+    # Partial graph.json (e.g. a freshly-ingested chapter graphify hasn't seen yet):
+    # include every page still missing as its own community, wired by wikilinks, so the
+    # atlas never silently drops content. Existing communities/colors are preserved.
+    key2id = {v["key"]: nid for nid, v in keep.items()}
+    if any(k not in key2id for k in pages):
+        newc = max((v["community"] for v in keep.values()), default=-1) + 1
+        for k in pages:
+            if k not in key2id:
+                keep[k] = {"id": k, "key": k, "label": pages[k]["title"],
+                           "type": k.split("/")[0], "community": newc}
+                key2id[k] = k
+        seen = {(e["s"], e["t"]) for e in edges}
+        for k in pages:
+            sid = key2id.get(k)
+            for tgt in pages[k].get("links", []):
+                tid = key2id.get(tgt)
+                if tid and sid != tid and (sid, tid) not in seen and (tid, sid) not in seen:
+                    edges.append({"s": sid, "t": tid, "relation": "references", "confidence": "EXTRACTED"})
+                    seen.add((sid, tid))
     _spring(keep, edges)
     communities = sorted({n["community"] for n in keep.values()})
     return {"nodes": list(keep.values()), "edges": edges, "communities": communities}
@@ -488,7 +507,7 @@ def _about_taglines(wiki, prov):
         body = re.sub(r'^---\n.*?\n---\n', '', open(p, encoding="utf-8").read(), flags=re.S)
         h = re.search(r'^#\s+(.+)$', body, re.M)
         if h and ("—" in h.group(1) or "-" in h.group(1)):
-            subtitle = re.split(r'\s[—-]\s', h.group(1).strip(), 1)[-1].strip()
+            subtitle = re.split(r'\s[—-]\s', h.group(1).strip(), maxsplit=1)[-1].strip()
         after = body[h.end():] if h else body
         for para in re.split(r'\n\s*\n', after):
             t = para.strip()
