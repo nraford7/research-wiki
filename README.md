@@ -108,8 +108,9 @@ Tests: `python3 -m pytest tests/ -q`
 
 **Companion skills** (optional but recommended — the wiki degrades gracefully without them):
 
-- [**semantic-search**](https://github.com/) — hybrid BM25 + embedding search; powers
-  the atlas search and the "chat with the corpus" retrieval. (Local Claude Code skill.)
+- **semantic-search** — a local Claude Code skill: hybrid BM25 + embedding search
+  (OpenAI embeddings + sqlite-vec + FTS5). Powers the atlas search and the
+  "chat with the corpus" retrieval.
 - [**graphify**](https://pypi.org/project/graphifyy/) — community detection over the
   wiki; colors the atlas graph and seeds `analyze`'s themes. `pip install graphifyy`.
 
