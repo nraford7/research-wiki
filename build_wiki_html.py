@@ -1,0 +1,758 @@
+#!/usr/bin/env python3
+"""Build the wiki atlas: one self-contained, bible-styled wiki.html from the
+research wiki (markdown pages) + graphify graph.json.
+
+A reading pane (bible style) + an interactive, collapsible, community-colored
+SVG graph navigator with metadata nodes/edges excluded. See
+docs/superpowers/specs/2026-08-30-wiki-atlas-html-design.md.
+"""
+import argparse
+import glob
+import html as _html
+import json
+import os
+import re
+import sys
+from collections import Counter
+
+import markdown
+
+WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+PAGE_DIRS = ("bibles", "concepts", "thinkers", "debates", "themes", "answers")
+
+# ---------------------------------------------------------------- parsing ----
+
+def parse_frontmatter(text):
+    """Split leading `---\\n...\\n---\\n` YAML block from body. Prefer PyYAML."""
+    m = re.match(r'^---\n(.*?)\n---\n?(.*)$', text, re.S)
+    if not m:
+        return {}, text
+    raw, body = m.group(1), m.group(2)
+    try:
+        import yaml
+        fm = yaml.safe_load(raw) or {}
+        if not isinstance(fm, dict):
+            fm = {}
+    except Exception:
+        # best-effort last resort: simple `key: value` only
+        fm = {}
+        for line in raw.splitlines():
+            if ':' in line and not line.startswith(' '):
+                k, v = line.split(':', 1)
+                fm[k.strip()] = v.strip().strip('"').strip("'")
+    return fm, body
+
+
+def resolve_title(fm, body, node_label, slug):
+    """title -> name -> question -> first H1 -> graph label -> slug."""
+    for k in ('title', 'name', 'question'):
+        v = fm.get(k)
+        if v:
+            return str(v).strip()
+    h1 = re.search(r'^#\s+(.+)$', body, re.M)
+    if h1:
+        return h1.group(1).strip()
+    return node_label or slug
+
+
+def EXCLUDE(sf):
+    """True if source_file is a metadata page (never a graph node / nav item)."""
+    return sf in ("index.md", "log.md", "about.md") or sf.startswith("reports/")
+
+
+def load_pages(wiki_dir, node_labels):
+    pages = {}
+    for d in PAGE_DIRS:
+        for p in sorted(glob.glob(os.path.join(wiki_dir, d, "*.md"))):
+            base = os.path.basename(p)
+            sf = f"{d}/{base}"
+            if EXCLUDE(sf):
+                continue
+            with open(p, encoding="utf-8") as fh:
+                fm, body = parse_frontmatter(fh.read())
+            if d == "bibles":
+                # drop the scaffolding "method note" line — bibles read as clean
+                # research-question landing pages, not lab notes
+                body = re.sub(r'(?m)^\*\*Method note:\*\*.*\n?', '', body)
+            slug = fm.get("slug") or base[:-3]
+            key = f"{d}/{slug}"
+            bibles = fm.get("bibles") or []
+            if isinstance(bibles, str):
+                bibles = [b.strip() for b in bibles.strip("[]").split(",") if b.strip()]
+            pages[key] = {
+                "title": resolve_title(fm, body, node_labels.get(key), slug),
+                "type": d[:-1] if d.endswith("s") else d,
+                "slug": slug,
+                "overview": bool(fm.get("overview")),  # has an integrated narrative lead
+                "sources": fm.get("sources") or {},    # {bible-slug: section-anchor} deep-links
+                "file": f"{d}/{base[:-3]}",  # filename stem, for graph node mapping
+                "status": fm.get("status", ""),
+                "bibles": bibles,
+                "body": body,
+            }
+    return pages
+
+
+# ----------------------------------------------------- markdown -> html ------
+
+WIKILINK = re.compile(r'\[\[([a-z]+/[A-Za-z0-9_-]+)\]\]')
+CITE = re.compile(
+    r'\[([A-Z][^\]\[]*?,\s*\d{4}[a-z]?(?:;[^\]\[]*?\d{4}[a-z]?)*'
+    r'(?:,\s*(?:ch\.|p\.|pp\.)[^\]\[]*)?)\]'
+)
+
+
+def md_to_html(body, pages):
+    links, missing = [], []
+
+    def wl(m):
+        key = m.group(1)
+        links.append(key)
+        t = pages.get(key, {}).get("title")
+        if t is None:
+            missing.append(key)
+            return f'<span class="wikilink-missing">{_html.escape(key)}</span>'
+        return f'<a class="wikilink" data-page="{key}">{_html.escape(t)}</a>'
+
+    tmp = WIKILINK.sub(wl, body)
+    tmp = CITE.sub(lambda m: f'<cite class="cite">[{m.group(1)}]</cite>', tmp)
+    out = markdown.markdown(tmp, extensions=["tables", "fenced_code", "sane_lists"])
+    return out, links, missing
+
+
+# ------------------------------------------------------------- graph ---------
+
+def _spring(keep, edges):
+    import networkx as nx
+    G = nx.Graph()
+    G.add_nodes_from(keep)
+    G.add_edges_from((e["s"], e["t"]) for e in edges)
+    pos = nx.spring_layout(G, seed=42) if G.number_of_nodes() else {}
+    deg = dict(G.degree())
+    for nid, n in keep.items():
+        x, y = pos.get(nid, (0.5, 0.5))
+        n["x"] = round(500 + x * 480, 1)
+        n["y"] = round(500 + y * 480, 1)
+        n["size"] = max(4, deg.get(nid, 0))
+
+
+def _graph_from_links(pages):
+    """Degraded fallback (no graph.json). Runs AFTER md_to_html filled links."""
+    keep = {k: {"id": k, "key": k, "label": pages[k]["title"],
+                "type": k.split("/")[0], "community": 0} for k in pages}
+    edges = [{"s": k, "t": tgt, "relation": "references", "confidence": "EXTRACTED"}
+             for k in pages for tgt in pages[k].get("links", []) if tgt in keep]
+    _spring(keep, edges)
+    return {"nodes": list(keep.values()), "edges": edges,
+            "communities": sorted({n["community"] for n in keep.values()})}
+
+
+def load_graph(graph_path, pages, log=lambda *a: None):
+    if not os.path.exists(graph_path):
+        log("graph.json absent — building degraded graph from wikilinks only")
+        return _graph_from_links(pages)
+    with open(graph_path) as fh:
+        g = json.load(fh)
+
+    def endpoint(e, a, b):
+        return e.get(a, e.get(b))
+
+    by_file = {p.get("file", k): k for k, p in pages.items()}  # filename stem -> page key
+    keep = {}
+    dropped_unmapped = 0
+    for n in g.get("nodes", []):
+        nid = n.get("id")
+        sf = n.get("source_file", "")
+        if not nid or not sf or EXCLUDE(sf):
+            continue
+        fkey = sf[:-3] if sf.endswith(".md") else sf
+        key = by_file.get(fkey)
+        if key is None:
+            dropped_unmapped += 1
+            continue
+        keep[nid] = {
+            "id": nid, "key": key, "label": n.get("label", key),
+            "type": key.split("/")[0], "community": int(n.get("community", 0)),
+        }
+    if dropped_unmapped:
+        log(f"dropped {dropped_unmapped} graph node(s) with no matching page")
+    edges = []
+    for e in g.get("links", g.get("edges", [])):
+        s, t = endpoint(e, "source", "_src"), endpoint(e, "target", "_tgt")
+        if s in keep and t in keep:
+            edges.append({"s": s, "t": t, "relation": e.get("relation", ""),
+                          "confidence": e.get("confidence", "")})
+    _spring(keep, edges)
+    communities = sorted({n["community"] for n in keep.values()})
+    return {"nodes": list(keep.values()), "edges": edges, "communities": communities}
+
+
+# ------------------------------------------------- front-door pieces ---------
+
+def read_about(wiki_dir):
+    p = os.path.join(wiki_dir, "about.md")
+    if not os.path.exists(p):
+        return None
+    with open(p, encoding="utf-8") as fh:
+        _, body = parse_frontmatter(fh.read())
+    return body
+
+
+def _newest_report(wiki_dir):
+    reps = sorted(glob.glob(os.path.join(wiki_dir, "reports", "*-analysis.md")))
+    return reps[-1] if reps else None
+
+
+def read_unresolved(wiki_dir):
+    p = _newest_report(wiki_dir)
+    if not p:
+        return ""
+    with open(p, encoding="utf-8") as fh:
+        text = fh.read()
+    m = re.search(r'^##\s+Open questions the corpus cannot settle\s*\n(.*?)(?=^##\s|\Z)',
+                  text, re.S | re.M)
+    section = m.group(1).strip() if m else ""
+    # ensure a blank line before the first list item so markdown renders a real
+    # <ul> instead of folding the intro + bullets into one paragraph blob
+    section = re.sub(r'(?m)^([^\n#>-].*\S)\n(- )', r'\1\n\n\2', section)
+    return section
+
+
+def read_community_labels(graphify_dir):
+    """Parse `### Community N - "Name"` from GRAPH_REPORT.md (names renumber
+    every analyze run, so never hard-code)."""
+    p = os.path.join(graphify_dir, "GRAPH_REPORT.md")
+    labels = {}
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            for m in re.finditer(r'^###\s+Community\s+(\d+)\s+-\s+"(.+)"\s*$',
+                                 fh.read(), re.M):
+                labels[int(m.group(1))] = m.group(2)
+    return labels
+
+
+def _hook(body):
+    """First sentence after the H1, for theme/debate list hooks."""
+    txt = re.sub(r'^#\s+.+$', '', body, count=1, flags=re.M)
+    for line in txt.splitlines():
+        line = line.strip()
+        if line and not line.startswith(('#', '|', '-', '*', '>')):
+            line = WIKILINK.sub(lambda m: m.group(1).split('/')[-1], line)
+            line = re.sub(r'[\*_`]', '', line)
+            s = re.split(r'(?<=[.?!])\s', line)[0]
+            return (s[:180] + '…') if len(s) > 180 else s
+    return ""
+
+
+def provenance(pages, wiki_dir):
+    counts = Counter(p["type"] for p in pages.values())
+    last = ""
+    logp = os.path.join(wiki_dir, "log.md")
+    if os.path.exists(logp):
+        with open(logp, encoding="utf-8") as fh:
+            stamps = re.findall(r'^(\d{4}-\d\d-\d\d \d\d:\d\d)\s*\|\s*analyze\s*\|',
+                                fh.read(), re.M)
+        if stamps:
+            last = max(stamps)
+    return {
+        "bibles": counts.get("bible", 0), "concepts": counts.get("concept", 0),
+        "thinkers": counts.get("thinker", 0), "debates": counts.get("debate", 0),
+        "themes": counts.get("theme", 0), "answers": counts.get("answer", 0),
+        "last_analysis": last,
+    }
+
+
+def front_sections(pages, graph, community_labels):
+    themes = [(k, p["title"], _hook(p["body"])) for k, p in pages.items() if p["type"] == "theme"]
+    debates = [(k, p["title"]) for k, p in pages.items() if p["type"] == "debate"]
+    clusters = [(cid, community_labels.get(cid, f"Community {cid}")) for cid in graph["communities"]]
+    return {"themes": sorted(themes, key=lambda t: t[1]),
+            "debates": sorted(debates, key=lambda t: t[1]),
+            "clusters": clusters}
+
+
+# ------------------------------------------------------------- render --------
+
+PALETTE = ["#1e6154", "#9b4a2f", "#3a5a8c", "#7a5c99", "#3f7d4e", "#a8842a",
+           "#8c3b5a", "#2f7d86", "#6b6f3a", "#894b2f", "#4a4a4a", "#5c7a99"]
+
+# Masthead identity (thematic, editable here or via about.md's H1)
+ATLAS_TITLE = "Other Minds"
+ATLAS_KICKER = "A research atlas"
+
+BIBLE_CSS = """
+:root{color-scheme:light dark;--paper:#f3f0e8;--paper-raised:#faf8f2;--ink:#181a18;
+--muted:#666a62;--line:#c9c5b9;--accent:#1e6154;--accent-soft:#dce8e1;
+--warning:#9b4a2f;--serif:Georgia,"Times New Roman",serif;
+--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+*{box-sizing:border-box;}html{scroll-behavior:smooth;}
+body{margin:0;background:var(--paper);color:var(--ink);font:18px/1.72 var(--serif);text-rendering:optimizeLegibility;}
+a{color:var(--accent);text-underline-offset:.18em;cursor:pointer;}
+a:hover{text-decoration-thickness:2px;}
+.masthead{padding:22px 28px 18px;border-bottom:3px double var(--ink);display:flex;
+gap:24px;align-items:baseline;flex-wrap:wrap;justify-content:space-between;}
+.masthead .brand{font:700 .74rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);}
+.masthead h1{margin:0;font:500 1.5rem/1 var(--serif);letter-spacing:-.02em;}
+.prov{margin:0;color:var(--muted);font:600 .72rem/1.5 var(--sans);letter-spacing:.04em;text-transform:uppercase;}
+#search{font:1rem var(--sans);padding:.5rem .7rem;border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);min-width:220px;}
+h2{margin:1.6em 0 .6em;font:500 2rem/1.05 var(--serif);letter-spacing:-.03em;}
+h3{margin:1.6em 0 .5em;font:600 1.4rem/1.2 var(--serif);}
+h4{margin:1.4em 0 .4em;font:700 1rem/1.3 var(--sans);}
+p,ul,ol,blockquote,table{margin:0 0 1.2em;}li+li{margin-top:.4em;}
+cite.cite{font-style:normal;color:var(--accent);font:600 .82em var(--sans);}
+table{width:100%;border-collapse:collapse;font:.82rem/1.45 var(--sans);}
+th,td{padding:9px;border:1px solid var(--line);text-align:left;vertical-align:top;}
+blockquote{border-left:4px solid var(--accent);background:var(--accent-soft);margin:1.2em 0;padding:14px 20px;}
+.wikilink-missing{color:var(--warning);border-bottom:1px dotted var(--warning);}
+.status-chip{display:inline-block;font:700 .6rem var(--sans);letter-spacing:.1em;text-transform:uppercase;
+color:var(--muted);border:1px solid var(--line);padding:2px 7px;border-radius:2px;margin-left:.6em;vertical-align:middle;}
+"""
+
+ATLAS_CSS = """
+[hidden]{display:none !important;}
+.mast-controls{display:flex;gap:8px;align-items:center;}
+#home-btn,#panel-btn{font:600 .72rem var(--sans);letter-spacing:.04em;border:1px solid var(--line);cursor:pointer;padding:.5rem .7rem;background:var(--paper);color:var(--ink);}
+#home-btn{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+#atlas{display:grid;grid-template-columns:minmax(300px,36%) 1fr;height:calc(100vh - 66px);}
+#atlas.collapsed{grid-template-columns:0 1fr;}
+.left-pane{border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:var(--paper-raised);min-width:0;}
+#atlas.collapsed .left-pane{display:none;}
+.pane-tabs{display:flex;border-bottom:1px solid var(--line);flex:none;}
+.pane-tabs .tab{flex:1;font:600 .72rem var(--sans);letter-spacing:.08em;text-transform:uppercase;background:var(--paper);color:var(--muted);border:none;border-right:1px solid var(--line);padding:.6rem;cursor:pointer;}
+.pane-tabs .tab:last-child{border-right:none;}
+.pane-tabs .tab.active{background:var(--paper-raised);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent);}
+.pane-body{flex:1;min-height:0;display:flex;}
+#view-graph,#view-index{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;}
+#view-index{overflow:auto;padding:10px 12px;}
+#index-filter{font:1rem var(--sans);padding:.4rem .6rem;border:1px solid var(--line);background:var(--paper);color:var(--ink);margin-bottom:6px;flex:none;}
+.index-group{margin-bottom:.3em;}
+.index-group h3{margin:.7em 0 .25em;font:700 .7rem var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);}
+.index-group ul{list-style:disc;margin:0;padding:0 0 0 1.6em;}
+.index-group li{padding:1px 0;}
+.index-group li::marker{color:var(--line);}
+.index-group li a{font:.92rem/1.35 var(--serif);text-decoration:none;color:var(--ink);}
+.index-group li a:hover{color:var(--accent);}
+.svg-wrap{flex:1;overflow:hidden;position:relative;min-height:0;}
+#atlas-graph{width:100%;height:100%;cursor:grab;}
+#atlas-graph.grabbing{cursor:grabbing;}
+#atlas-graph line{stroke:var(--line);stroke-opacity:.5;}
+#atlas-graph circle{cursor:pointer;stroke:var(--paper);stroke-width:1.2;transition:opacity .12s;}
+#atlas-graph circle.dim{opacity:.12;}
+#atlas-graph circle.active{stroke:var(--ink);stroke-width:2.5;}
+.legend{padding:8px 10px;border-top:1px solid var(--line);font:600 .68rem/1.5 var(--sans);max-height:26%;overflow:auto;flex:none;}
+.legend .lg{display:flex;align-items:center;gap:7px;cursor:pointer;padding:1px 0;}
+.legend .sw{width:11px;height:11px;border-radius:50%;flex:none;}
+.typefilter{padding:6px 10px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;flex:none;}
+.typefilter button{font:600 .64rem var(--sans);letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line);background:var(--paper);color:var(--muted);padding:3px 8px;cursor:pointer;border-radius:2px;}
+.typefilter button.off{opacity:.35;text-decoration:line-through;}
+.reader{overflow:auto;padding:40px clamp(24px,5vw,72px) 100px;}
+.reader .doc{max-width:760px;margin:0 auto;}
+.reader .kicker{font:700 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
+.front .lead{font-size:1.12rem;}
+.front h1{font:500 clamp(2.4rem,5vw,3.6rem)/1 var(--serif);letter-spacing:-.03em;margin:.1em 0 .5em;}
+.front .cards a,.front .qlist a{text-decoration:none;}
+.howto{margin:1.6em 0;padding:18px 22px;border-left:4px solid var(--accent);background:var(--accent-soft);}
+.howto ul{margin:.4em 0 0;}
+.unresolved-wrap ul{list-style:none;padding:0;margin:.6em 0 0;}
+.unresolved-wrap li{padding:9px 0 9px 16px;border-left:3px solid var(--accent-soft);margin-bottom:8px;}
+#tooltip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);font:600 .72rem var(--sans);padding:4px 8px;border-radius:3px;opacity:0;transition:opacity .1s;z-index:20;max-width:280px;}
+.search-results{list-style:none;padding:0;margin:1em 0;}
+.search-results li{padding:6px 0;border-bottom:1px solid var(--line);}
+"""
+
+
+def _svg(graph):
+    node_by_id = {n["id"]: n for n in graph["nodes"]}
+    lines = []
+    for e in graph["edges"]:
+        a, b = node_by_id.get(e["s"]), node_by_id.get(e["t"])
+        if not a or not b:
+            continue
+        lines.append(f'<line x1="{a["x"]}" y1="{a["y"]}" x2="{b["x"]}" y2="{b["y"]}"/>')
+    circles = []
+    for n in graph["nodes"]:
+        r = round(3 + (n["size"] ** 0.5) * 1.6, 1)
+        color = PALETTE[n["community"] % len(PALETTE)]
+        circles.append(
+            f'<circle cx="{n["x"]}" cy="{n["y"]}" r="{r}" fill="{color}" '
+            f'data-page="{n["key"]}" data-community="{n["community"]}" '
+            f'data-label="{_html.escape(n["label"], quote=True)}"/>')
+    return ('<g class="edges">' + "".join(lines) + '</g>'
+            '<g class="nodes">' + "".join(circles) + '</g>')
+
+
+def _index_html(pages):
+    """Grouped, alphabetized, browsable list of every entry."""
+    order = [("theme", "Themes"), ("debate", "Debates"), ("concept", "Concepts"),
+             ("thinker", "Thinkers"), ("bible", "Bibles"), ("answer", "Answers")]
+    parts = []
+    for typ, label in order:
+        items = sorted(((k, p["title"]) for k, p in pages.items() if p["type"] == typ),
+                       key=lambda t: t[1].lower())
+        if not items:
+            continue
+        parts.append(f'<div class="index-group"><h3>{label} ({len(items)})</h3><ul>')
+        for k, t in items:
+            parts.append(f'<li><a data-page="{k}">{_html.escape(t)}</a></li>')
+        parts.append('</ul></div>')
+    return "".join(parts)
+
+
+def _front_door_html(about_html, front, unresolved_html, prov):
+    parts = ['<div class="doc front">', f'<p class="kicker">{_html.escape(ATLAS_KICKER)}</p>']
+    if about_html:
+        parts.append(f'<div class="lead">{about_html}</div>')
+    else:
+        parts.append(f'<p class="lead">A research wiki over {prov["bibles"]} source bibles — '
+                     f'{prov["concepts"]} concepts, {prov["thinkers"]} thinkers, '
+                     f'{prov["debates"]} debates, {prov["themes"]} themes.</p>')
+    if front["themes"]:
+        parts.append('<h2>Themes it explores</h2><ul>')
+        for k, t, hook in front["themes"]:
+            h = f' — {_html.escape(hook)}' if hook else ''
+            parts.append(f'<li><a class="wikilink" data-page="{k}">{_html.escape(t)}</a>{h}</li>')
+        parts.append('</ul>')
+    if front["debates"]:
+        parts.append('<h2>Live questions</h2><ul class="qlist">')
+        for k, t in front["debates"]:
+            parts.append(f'<li><a class="wikilink" data-page="{k}">{_html.escape(t)}</a></li>')
+        parts.append('</ul>')
+    if front["clusters"]:
+        parts.append('<h2>Topic clusters</h2><p>')
+        chips = []
+        for cid, label in front["clusters"]:
+            color = PALETTE[cid % len(PALETTE)]
+            chips.append(f'<a class="cluster-link" data-community="{cid}">'
+                         f'<span class="sw" style="display:inline-block;width:11px;height:11px;'
+                         f'border-radius:50%;background:{color};vertical-align:middle;margin-right:5px"></span>'
+                         f'{_html.escape(label)}</a>')
+        parts.append(' &nbsp;·&nbsp; '.join(chips))
+        parts.append('</p>')
+    parts.append(
+        '<div class="howto"><strong>How to use this</strong><ul>'
+        '<li><strong>Graph</strong> tab (left): click any node to open that entry here; hover for its name.</li>'
+        '<li><strong>Index</strong> tab (left): browse every entry grouped by kind; filter as you type.</li>'
+        '<li><strong>Search</strong> (top) finds any concept, thinker, or idea by name or meaning.</li>'
+        '<li>Inside a page, follow the <em>See also</em> links to walk the ideas.</li>'
+        '<li><strong>⌂ Home</strong> returns here; <strong>Panel</strong> hides the left side to read full-width.</li>'
+        '<li>Open the <code>wiki/</code> folder in Obsidian to edit the underlying notes.</li>'
+        '</ul></div>')
+    if unresolved_html:
+        parts.append('<h2>Open questions the corpus cannot settle</h2>')
+        parts.append(f'<div class="unresolved-wrap">{unresolved_html}</div>')
+    parts.append('</div>')
+    return "".join(parts)
+
+
+def render(pages, graph, about_html, unresolved_html, front, prov, community_labels):
+    front_door = _front_door_html(about_html, front, unresolved_html, prov)
+    # PAGES payload for client navigation
+    payload = {k: {"title": p["title"], "type": p["type"],
+                   "status": _html.escape(str(p["status"])),
+                   "html": p["html"], "text": re.sub(r'<[^>]+>', ' ', p["html"])[:4000]}
+               for k, p in pages.items()}
+    legend = "".join(
+        f'<div class="lg" data-community="{cid}"><span class="sw" '
+        f'style="background:{PALETTE[cid % len(PALETTE)]}"></span>'
+        f'{_html.escape(community_labels.get(cid, f"Community {cid}"))}</div>'
+        for cid in graph["communities"])
+    types = sorted({n["type"] for n in graph["nodes"]})
+    typefilter = "".join(f'<button data-type="{t}">{t}</button>' for t in types)
+    prov_line = " · ".join([
+        f'{prov["bibles"]} bibles', f'{prov["concepts"]} concepts',
+        f'{prov["thinkers"]} thinkers', f'{prov["debates"]} debates',
+        f'{prov["themes"]} themes', f'{prov["answers"]} answers']
+        + ([f'updated {prov["last_analysis"]}'] if prov["last_analysis"] else []))
+    svg = _svg(graph)
+    index_html = _index_html(pages)
+    # `<\/` is JSON-safe (decodes to `</`) and prevents any page body containing
+    # a literal </script> from closing the embedding <script> tag early.
+    def _safe(obj):
+        return json.dumps(obj).replace("</", "<\\/")
+    graph_json = _safe({"nodes": graph["nodes"], "edges": graph["edges"]})
+    pages_json = _safe(payload)
+    front_json = _safe(front_door)
+    return f"""<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>{_html.escape(ATLAS_TITLE)}</title>
+<style>{BIBLE_CSS}{ATLAS_CSS}</style></head><body>
+<header class="masthead">
+  <div><span class="brand">{_html.escape(ATLAS_KICKER)}</span> <h1>{_html.escape(ATLAS_TITLE)}</h1></div>
+  <p class="prov">{prov_line}</p>
+  <div class="mast-controls">
+    <button id="home-btn" title="Front door">⌂ Home</button>
+    <button id="panel-btn" title="Show/hide the left panel">Panel</button>
+    <input id="search" type="search" placeholder="Search…" autocomplete="off">
+  </div>
+</header>
+<div id="atlas">
+  <aside class="left-pane">
+    <div class="pane-tabs">
+      <button class="tab active" data-view="graph">Graph</button>
+      <button class="tab" data-view="index">Index</button>
+    </div>
+    <div class="pane-body">
+      <section id="view-graph">
+        <div class="svg-wrap"><svg id="atlas-graph" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet">{svg}</svg></div>
+        <div class="typefilter">{typefilter}</div>
+        <div class="legend">{legend}</div>
+      </section>
+      <section id="view-index" hidden>
+        <input id="index-filter" type="search" placeholder="Filter entries…" autocomplete="off">
+        <div class="index-groups">{index_html}</div>
+      </section>
+    </div>
+  </aside>
+  <main class="reader" id="reader"></main>
+</div>
+<div id="tooltip"></div>
+<script type="application/json" id="PAGES">{pages_json}</script>
+<script type="application/json" id="GRAPH">{graph_json}</script>
+<script type="application/json" id="FRONT">{front_json}</script>
+<script>{CLIENT_JS}</script>
+</body></html>"""
+
+
+CLIENT_JS = r"""
+const PAGES = JSON.parse(document.getElementById('PAGES').textContent);
+const FRONT = JSON.parse(document.getElementById('FRONT').textContent);
+const reader = document.getElementById('reader');
+const svg = document.getElementById('atlas-graph');
+const tip = document.getElementById('tooltip');
+const atlas = document.getElementById('atlas');
+const circles = [...svg.querySelectorAll('circle')];
+const esc = s => String(s).replace(/</g,'&lt;');
+
+function showFront(){ reader.innerHTML = FRONT; setActive(null); reader.scrollTop=0; }
+function renderPage(key){
+  const p = PAGES[key];
+  if(!p){ return; }
+  reader.innerHTML = '<div class="doc"><p class="kicker">'+esc(p.type)+
+    (p.status?'<span class="status-chip">'+esc(p.status)+'</span>':'')+'</p>'+p.html+'</div>';
+  setActive(key); reader.scrollTop=0;
+}
+// bible entries open the full bundled research bible (new tab); everything else
+// renders in the reader
+function openEntry(key, anchor){
+  if(key.indexOf('bibles/')===0){ window.open('bibles-html/'+key.slice(7)+'.html'+(anchor?('#'+anchor):''),'_blank'); }
+  else { renderPage(key); }
+}
+// one delegated listener handles every internal link (reader, index, search, clusters)
+document.addEventListener('click', e=>{
+  const p = e.target.closest('a[data-page]');
+  if(p){ e.preventDefault(); openEntry(p.dataset.page, p.dataset.anchor); return; }
+  const c = e.target.closest('a[data-community]');
+  if(c){ e.preventDefault(); setView('graph'); highlightCommunity(+c.dataset.community); }
+});
+function setActive(key){
+  circles.forEach(c=>{ c.classList.remove('active','dim'); });
+  if(key){ const hit=circles.find(c=>c.dataset.page===key);
+    if(hit){ circles.forEach(c=>c.classList.add('dim')); hit.classList.remove('dim'); hit.classList.add('active'); } }
+}
+function highlightCommunity(cid){ circles.forEach(c=> c.classList.toggle('dim', +c.dataset.community!==cid)); }
+// node interactions
+circles.forEach(c=>{
+  c.addEventListener('click',()=>openEntry(c.dataset.page));
+  c.addEventListener('mousemove',e=>{ tip.textContent=c.dataset.label; tip.style.opacity=1;
+    tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; });
+  c.addEventListener('mouseleave',()=>{ tip.style.opacity=0; });
+});
+document.querySelectorAll('.legend .lg').forEach(l=>l.addEventListener('click',()=>highlightCommunity(+l.dataset.community)));
+const offTypes=new Set();
+document.querySelectorAll('.typefilter button').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.dataset.type; if(offTypes.has(t)){offTypes.delete(t);b.classList.remove('off');}else{offTypes.add(t);b.classList.add('off');}
+  circles.forEach(c=> c.style.display = offTypes.has(c.dataset.page.split('/')[0]) ? 'none':'');
+}));
+// Home
+document.getElementById('home-btn').addEventListener('click',showFront);
+// Panel collapse (persisted)
+function applyPanel(v){ atlas.classList.toggle('collapsed',v); }
+applyPanel(localStorage.getItem('wikiAtlas.paneCollapsed')==='1');
+document.getElementById('panel-btn').addEventListener('click',()=>{
+  const v=!atlas.classList.contains('collapsed');
+  localStorage.setItem('wikiAtlas.paneCollapsed', v?'1':'0'); applyPanel(v);
+});
+// Graph / Index tabs (persisted)
+function setView(v){
+  document.getElementById('view-graph').hidden = v!=='graph';
+  document.getElementById('view-index').hidden = v!=='index';
+  document.querySelectorAll('.pane-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.view===v));
+  if(atlas.classList.contains('collapsed')){ applyPanel(false); localStorage.setItem('wikiAtlas.paneCollapsed','0'); }
+  localStorage.setItem('wikiAtlas.view', v);
+}
+document.querySelectorAll('.pane-tabs .tab').forEach(t=>t.addEventListener('click',()=>setView(t.dataset.view)));
+setView(localStorage.getItem('wikiAtlas.view')||'graph');
+// Index filter
+const idxFilter=document.getElementById('index-filter');
+idxFilter.addEventListener('input',()=>{
+  const q=idxFilter.value.trim().toLowerCase();
+  document.querySelectorAll('.index-group').forEach(g=>{
+    let shown=0;
+    g.querySelectorAll('li').forEach(li=>{ const hit=li.textContent.toLowerCase().includes(q);
+      li.style.display=hit?'':'none'; if(hit)shown++; });
+    g.style.display=shown?'':'none';
+  });
+});
+// pan + zoom
+let vb={x:0,y:0,w:1000,h:1000};
+function setVB(){ svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`); }
+svg.addEventListener('wheel',e=>{ e.preventDefault(); const f=e.deltaY<0?0.9:1.1;
+  const r=svg.getBoundingClientRect(); const mx=vb.x+(e.clientX-r.left)/r.width*vb.w, my=vb.y+(e.clientY-r.top)/r.height*vb.h;
+  vb.w*=f; vb.h*=f; vb.x=mx-(mx-vb.x)*f; vb.y=my-(my-vb.y)*f; setVB(); },{passive:false});
+let drag=null;
+svg.addEventListener('mousedown',e=>{ if(e.target.tagName==='circle')return; drag={x:e.clientX,y:e.clientY}; svg.classList.add('grabbing'); });
+window.addEventListener('mousemove',e=>{ if(!drag)return; const r=svg.getBoundingClientRect();
+  vb.x-=(e.clientX-drag.x)/r.width*vb.w; vb.y-=(e.clientY-drag.y)/r.height*vb.h; drag={x:e.clientX,y:e.clientY}; setVB(); });
+window.addEventListener('mouseup',()=>{ drag=null; svg.classList.remove('grabbing'); });
+// search
+const search=document.getElementById('search');
+search.addEventListener('input',()=>{
+  const q=search.value.trim().toLowerCase();
+  if(!q){ showFront(); return; }
+  const hits=Object.entries(PAGES).filter(([k,p])=>
+    p.title.toLowerCase().includes(q)||p.text.toLowerCase().includes(q))
+    .sort((a,b)=>{ const at=a[1].title.toLowerCase().startsWith(q)?0:1, bt=b[1].title.toLowerCase().startsWith(q)?0:1; return at-bt; })
+    .slice(0,40);
+  reader.innerHTML='<div class="doc"><p class="kicker">Search</p><h2>'+hits.length+' result'+(hits.length===1?'':'s')+' for “'+esc(q)+'”</h2><ul class="search-results">'+
+    hits.map(([k,p])=>'<li><a data-page="'+k+'">'+esc(p.title)+'</a> <span class="prov" style="text-transform:none;letter-spacing:0">'+esc(p.type)+'</span></li>').join('')+'</ul></div>';
+});
+showFront();
+"""
+
+
+# ------------------------------------------------------------- validate ------
+
+def validate(pages, graph, html):
+    problems = []
+    if not html or len(html) < 1000:
+        problems.append("output HTML is empty or too small")
+    m = re.search(r'id="PAGES"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        problems.append("PAGES payload missing")
+    else:
+        try:
+            if len(json.loads(m.group(1))) != len(pages):
+                problems.append("embedded PAGES count != parsed pages count")
+        except json.JSONDecodeError:
+            problems.append("PAGES payload does not parse (script-tag breakout?)")
+    for island in ("GRAPH", "FRONT"):
+        mm = re.search(rf'id="{island}"[^>]*>(.*?)</script>', html, re.S)
+        if not mm:
+            problems.append(f"{island} payload missing")
+            continue
+        try:
+            json.loads(mm.group(1))
+        except json.JSONDecodeError:
+            problems.append(f"{island} payload does not parse (script-tag breakout?)")
+    ok = set(PAGE_DIRS)
+    for n in graph["nodes"]:
+        if n["key"].split("/")[0] not in ok:
+            problems.append(f"metadata node leaked: {n['key']}")
+    node_ids = {n["id"] for n in graph["nodes"]}
+    for e in graph["edges"]:
+        if e["s"] not in node_ids or e["t"] not in node_ids:
+            problems.append("edge with endpoint outside node set")
+            break
+    return problems
+
+
+# ------------------------------------------------------------- build ---------
+
+def _load_anchor_heading(wiki):
+    """{bible-slug: {anchor: heading}} from the corpus anchors.json (for labels)."""
+    p = os.path.join(wiki, ".bibles-text", "anchors.json")
+    out = {}
+    if os.path.exists(p):
+        data = json.load(open(p, encoding="utf-8"))
+        for slug, entries in data.items():
+            m = {}
+            for e in entries:
+                # keep the FIRST heading per anchor — the section-title h2, since
+                # child h3s inherit the same section anchor and come later in order
+                if e.get("anchor") and e["anchor"] not in m:
+                    m[e["anchor"]] = e["heading"]
+            out[slug] = m
+    return out
+
+
+def _sources_html(page, anchor_heading):
+    """Anchored deep-links into the bibles: each source opens the bible scrolled
+    to the section the concept draws on (via page['sources']), falling back to the
+    whole bible when no anchor is known."""
+    items = []
+    for b in page["bibles"]:
+        anc = page.get("sources", {}).get(b)
+        if anc:
+            head = anchor_heading.get(b, {}).get(anc, "")
+            label = f"{b} § {head}" if head else b
+            items.append(f'<a class="wikilink" data-page="bibles/{b}" data-anchor="{_html.escape(anc, quote=True)}">{_html.escape(label)}</a>')
+        else:
+            items.append(f'<a class="wikilink" data-page="bibles/{b}">{_html.escape(b)}</a>')
+    if not items:
+        return ""
+    return '<h2>Sources</h2><p>Drawn from the research bibles: ' + " · ".join(items) + '.</p>'
+
+
+def build_all(wiki, out, quiet=True):
+    def log(*a):
+        if not quiet:
+            print("[wiki-atlas]", *a)
+
+    anchor_heading = _load_anchor_heading(wiki)
+    pages = load_pages(wiki, {})
+    for p in pages.values():
+        body = p["body"]
+        if p["overview"]:
+            # the narrative already integrates the per-bible material, so drop the
+            # raw "## In <bible>" scaffolding sections from the reader view (they
+            # stay in the markdown for Obsidian + the ingest pipeline)
+            body = re.sub(r'(?ms)^##\s+In\s+.*?(?=^##\s|\Z)', '', body)
+        p["html"], p["links"], p["missing"] = md_to_html(body, pages)
+        if p["overview"] and p["bibles"]:
+            p["html"] += _sources_html(p, anchor_heading)
+    graph = load_graph(os.path.join(wiki, "graphify-out", "graph.json"), pages, log)
+    # optional title backfill for the rare graph-label fallback
+    node_label = {n["key"]: n["label"] for n in graph["nodes"]}
+    for k, p in pages.items():
+        if p["title"] == p["slug"] and node_label.get(k):
+            p["title"] = node_label[k]
+    labels = read_community_labels(os.path.join(wiki, "graphify-out"))
+    about_html_body = read_about(wiki)
+    about_html = md_to_html(about_html_body, pages)[0] if about_html_body else None
+    unresolved_html = md_to_html(read_unresolved(wiki), pages)[0]
+    prov = provenance(pages, wiki)
+    front = front_sections(pages, graph, labels)
+    html = render(pages, graph, about_html, unresolved_html, front, prov, labels)
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(html)
+    missing_total = sum(len(p.get("missing", [])) for p in pages.values())
+    problems = validate(pages, graph, html)
+    if missing_total:
+        log(f"note: {missing_total} unresolved wikilink(s) rendered as inert text")
+    return problems
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Build the wiki atlas HTML.")
+    ap.add_argument("--wiki", default=WIKI_DEFAULT)
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args(argv)
+    out = args.out or os.path.join(args.wiki, "wiki.html")
+    try:
+        problems = build_all(args.wiki, out, quiet=args.quiet)
+    except Exception as e:  # hard failure only
+        print(f"[wiki-atlas] BUILD FAILED: {e}", file=sys.stderr)
+        return 2
+    if problems:
+        print("[wiki-atlas] validator problems:")
+        for p in problems:
+            print("  -", p)
+        return 1
+    if not args.quiet:
+        print(f"[wiki-atlas] wrote {out} (validator clean)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
