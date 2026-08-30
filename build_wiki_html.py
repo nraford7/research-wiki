@@ -504,8 +504,9 @@ def _about_taglines(wiki, prov):
 
 
 def _landing_html(title, kicker, subtitle, blurb):
-    """Public splash/gate. `__ATLAS_USER__` / `__ATLAS_PASSWORD__` are placeholders the
-    deploy server replaces with the live credentials at serve time (never committed)."""
+    """Public splash with a login FORM (posts to /login). No credentials are shown or
+    embedded. `__LOGIN_ERROR__` is replaced by the deploy server (empty, or an error
+    line after a failed attempt); the server validates and sets a session cookie."""
     sub = f'<p class="sub">{_html.escape(subtitle)}</p>' if subtitle else ''
     blb = f'<p class="blurb">{_html.escape(blurb)}</p>' if blurb else ''
     return f"""<!doctype html><html lang="en"><head>
@@ -520,23 +521,25 @@ body{{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:cente
 h1{{font:500 clamp(2.6rem,7vw,4rem)/1.02 var(--serif);letter-spacing:-.03em;margin:0 0 .2em;}}
 .sub{{font:400 clamp(1.05rem,2.6vw,1.35rem)/1.4 var(--serif);margin:0 0 1.1em;}}
 .blurb{{color:var(--muted);font-size:1rem;margin:0 0 1.8em;max-width:48ch;}}
-.enter{{display:inline-block;font:600 .82rem var(--sans);letter-spacing:.04em;text-transform:uppercase;text-decoration:none;background:var(--ink);color:var(--paper);padding:.85rem 1.4rem;border-radius:2px;}}
-.enter:hover{{background:var(--accent);}}
-.creds{{margin-top:28px;border-top:1px solid var(--line);padding-top:18px;font:600 .82rem/1.8 var(--sans);}}
-.creds .lbl{{text-transform:uppercase;letter-spacing:.12em;font-size:.66rem;color:var(--accent);margin-bottom:6px;}}
-.creds .row span{{display:inline-block;width:92px;color:var(--muted);}}
-.creds code{{font:600 .92rem var(--sans);color:var(--ink);background:var(--accent-soft);padding:2px 8px;border-radius:3px;}}
+.login{{margin-top:24px;border-top:1px solid var(--line);padding-top:22px;max-width:340px;}}
+.login label{{display:block;font:600 .68rem/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;}}
+.login input{{display:block;width:100%;font:1rem var(--sans);padding:.6rem .7rem;margin:0 0 14px;border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);border-radius:2px;}}
+.login input:focus{{outline:none;border-color:var(--accent);}}
+.login button{{font:600 .82rem var(--sans);letter-spacing:.04em;text-transform:uppercase;cursor:pointer;background:var(--ink);color:var(--paper);border:none;padding:.85rem 1.4rem;border-radius:2px;}}
+.login button:hover{{background:var(--accent);}}
+.err{{color:#9b4a2f;font:600 .82rem var(--sans);margin:0 0 12px;}}
 </style></head><body>
 <main class="gate">
 <p class="kicker">{_html.escape(kicker)}</p>
 <h1>{_html.escape(title)}</h1>
 {sub}
 {blb}
-<a class="enter" href="wiki.html">Enter the atlas &rarr;</a>
-<div class="creds"><div class="lbl">Access</div>
-<div class="row"><span>username</span> <code>__ATLAS_USER__</code></div>
-<div class="row"><span>password</span> <code>__ATLAS_PASSWORD__</code></div>
-</div>
+<form class="login" method="post" action="login">
+__LOGIN_ERROR__
+<label for="u">Username</label><input id="u" name="username" autocomplete="username" autofocus required>
+<label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Enter the atlas &rarr;</button>
+</form>
 </main></body></html>"""
 
 
