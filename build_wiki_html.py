@@ -479,6 +479,67 @@ def _front_door_html(about_html, front, unresolved_html, prov):
     return "".join(parts)
 
 
+def _about_taglines(wiki, prov):
+    """Subtitle (after the em-dash in about.md's H1) + a short blurb (first lead
+    sentence) for the public landing page. Falls back to provenance counts."""
+    subtitle, blurb = "", ""
+    p = os.path.join(wiki, "about.md")
+    if os.path.exists(p):
+        body = re.sub(r'^---\n.*?\n---\n', '', open(p, encoding="utf-8").read(), flags=re.S)
+        h = re.search(r'^#\s+(.+)$', body, re.M)
+        if h and ("—" in h.group(1) or "-" in h.group(1)):
+            subtitle = re.split(r'\s[—-]\s', h.group(1).strip(), 1)[-1].strip()
+        after = body[h.end():] if h else body
+        for para in re.split(r'\n\s*\n', after):
+            t = para.strip()
+            if t and not t.startswith('#') and not t.startswith('**'):
+                t = re.sub(r'[*_`]', '', t)
+                blurb = (t[:220].rsplit(' ', 1)[0] + '…') if len(t) > 220 else t
+                break
+    if not blurb:
+        blurb = (f'A research wiki over {prov["bibles"]} source documents — '
+                 f'{prov["concepts"]} concepts, {prov["thinkers"]} thinkers, '
+                 f'{prov["debates"]} debates, {prov["themes"]} themes.')
+    return subtitle, blurb
+
+
+def _landing_html(title, kicker, subtitle, blurb):
+    """Public splash/gate. `__ATLAS_USER__` / `__ATLAS_PASSWORD__` are placeholders the
+    deploy server replaces with the live credentials at serve time (never committed)."""
+    sub = f'<p class="sub">{_html.escape(subtitle)}</p>' if subtitle else ''
+    blb = f'<p class="blurb">{_html.escape(blurb)}</p>' if blurb else ''
+    return f"""<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>{_html.escape(title)}</title>
+<style>
+:root{{--paper:#f3f0e8;--paper-raised:#faf8f2;--ink:#181a18;--muted:#666a62;--line:#c9c5b9;--accent:#1e6154;--accent-soft:#dce8e1;--serif:Georgia,"Times New Roman",serif;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}
+*{{box-sizing:border-box;}}
+body{{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:32px;background:var(--paper);color:var(--ink);font:18px/1.6 var(--serif);}}
+.gate{{max-width:560px;width:100%;}}
+.kicker{{font:700 .74rem/1 var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 14px;}}
+h1{{font:500 clamp(2.6rem,7vw,4rem)/1.02 var(--serif);letter-spacing:-.03em;margin:0 0 .2em;}}
+.sub{{font:400 clamp(1.05rem,2.6vw,1.35rem)/1.4 var(--serif);margin:0 0 1.1em;}}
+.blurb{{color:var(--muted);font-size:1rem;margin:0 0 1.8em;max-width:48ch;}}
+.enter{{display:inline-block;font:600 .82rem var(--sans);letter-spacing:.04em;text-transform:uppercase;text-decoration:none;background:var(--ink);color:var(--paper);padding:.85rem 1.4rem;border-radius:2px;}}
+.enter:hover{{background:var(--accent);}}
+.creds{{margin-top:28px;border-top:1px solid var(--line);padding-top:18px;font:600 .82rem/1.8 var(--sans);}}
+.creds .lbl{{text-transform:uppercase;letter-spacing:.12em;font-size:.66rem;color:var(--accent);margin-bottom:6px;}}
+.creds .row span{{display:inline-block;width:92px;color:var(--muted);}}
+.creds code{{font:600 .92rem var(--sans);color:var(--ink);background:var(--accent-soft);padding:2px 8px;border-radius:3px;}}
+</style></head><body>
+<main class="gate">
+<p class="kicker">{_html.escape(kicker)}</p>
+<h1>{_html.escape(title)}</h1>
+{sub}
+{blb}
+<a class="enter" href="wiki.html">Enter the atlas &rarr;</a>
+<div class="creds"><div class="lbl">Access</div>
+<div class="row"><span>username</span> <code>__ATLAS_USER__</code></div>
+<div class="row"><span>password</span> <code>__ATLAS_PASSWORD__</code></div>
+</div>
+</main></body></html>"""
+
+
 def render(pages, graph, about_html, unresolved_html, front, prov, community_labels):
     front_door = _front_door_html(about_html, front, unresolved_html, prov)
     # PAGES payload for client navigation
@@ -839,6 +900,11 @@ def build_all(wiki, out, quiet=True):
     html = render(pages, graph, about_html, unresolved_html, front, prov, labels)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(html)
+    # public landing/gate page beside the atlas; the deploy server serves it at "/"
+    # (creds injected at serve time). Optional artifact — the atlas works without it.
+    subtitle, blurb = _about_taglines(wiki, prov)
+    with open(os.path.join(wiki, "landing.html"), "w", encoding="utf-8") as fh:
+        fh.write(_landing_html(ATLAS_TITLE, ATLAS_KICKER, subtitle, blurb))
     missing_total = sum(len(p.get("missing", [])) for p in pages.values())
     problems = validate(pages, graph, html)
     if missing_total:
