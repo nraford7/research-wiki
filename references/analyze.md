@@ -120,6 +120,35 @@ Concrete example (delta run over two bibles):
 
 Then commit (if the wiki repo exists): `cd /Users/noahraford/magic/wiki && git add -A && git commit -m "analyze: <YYYY-MM-DD>"`.
 
+## Enrichment pass (`--full` only)
+
+When a chapter is complete, `analyze --full` finishes every page. Concept/thinker pages
+still at ingest level (frontmatter lacks `overview: true`) get a standalone **narrative
+lead** per the v2 house style in `HANDOVER.md` — standalone analysis of the idea, length
+scaled to source, **no book-framing, no document-talk** ("the bible(s)"/"the corpus"/etc.),
+cross-linked. Mechanics that scale (used for 250 then 400 pages):
+
+- Dispatch parallel **read-only drafting agents** (~7 pages each; point them at the
+  gold-sample exemplar + the v2 rules). Each reads a page (its definition + `## In <bible>`
+  sections) and RETURNS the lead as JSON `{slug: markdown}` — never edits files, so voice
+  stays consistent and the insert is single-writer.
+- Insert with a splice that replaces the text between the `# Title` line and the first
+  `## ` and sets `overview: true`. Then run `match_sources.py` (deep-links) and **strip any
+  dangling `[[links]]` to plain text** (agents guess slugs; this guarantees clean links).
+- **Skip pages that already have `overview: true`.** Delta `analyze` does NOT enrich — a
+  page may still gain `## In` sections from later ingests, which would stale its narrative.
+
+This is the pass that brings a freshly-ingested chapter to the depth of the rest of the wiki.
+
+## graphify refresh (`--full`, before the atlas)
+
+Refresh community detection so new pages are colored/clustered, not dumped in one group:
+invoke the **graphify** skill on the wiki (CWD `/Users/noahraford/magic/wiki`, output
+`wiki/graphify-out/`, `--update` on later runs). graphify is **agent-driven — there is no
+build CLI** (`graphify` the command only installs the skill / manages hooks). Non-fatal: if
+it can't run, `build_wiki_html.py`'s partial-graph fallback still includes every page (as an
+uncolored group wired by wikilinks), so the atlas never drops content.
+
 ## Refresh the search index (automatic, last step)
 
 Every `analyze` run ends by refreshing the semantic-search index so the new debates/themes/stubs are immediately searchable. Run it AFTER the commit (the index DB is git-ignored, so ordering vs. commit does not matter, but running last keeps the analytical work the priority):
