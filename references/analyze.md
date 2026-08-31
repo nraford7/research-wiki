@@ -190,23 +190,39 @@ must run here:
   member pages**; keep that dense. A note that overlaps no current community is dropped from
   the atlas (member list shown under the correct label, never the wrong prose).
 
-- **Refresh you must run on `--full`.** After the graphify refresh, reconcile the cluster
-  notes to the *current* communities so new clusters get prose and drifted ones get updated:
-  1. Read `wiki/graphify-out/graph.json` (member pages per `community`) and
-     `GRAPH_REPORT.md` (current `### Community N - "Name"` labels).
-  2. For **each current community**, ensure exactly one `wiki/clusters/<NN>-<slug>.md` note
-     that (a) sets `community:` to the current id and `title:` to the graphify label, and
-     (b) opens with a standalone narrative that **wikilinks 5+ of that community's
-     top-degree members** (so the atlas binds it by content). Refresh the prose of notes that
-     still map to a community; **create notes for NEW communities** (e.g. the agency and CEO
-     clusters from ch5/ch6); **archive** notes whose topic no longer forms a distinct
-     community by moving them to `wiki/clusters/_stale/` (the atlas ignores that subdir).
-  3. Scale it like the lead-enrichment pass: dispatch parallel **read-only drafting agents**
-     (one per community, given that community's member list + the v2 house style), each
-     RETURNING `{slug: markdown}`; do the file writes single-writer in the main context.
-  4. Runs **after graphify and before the atlas build**, so the rebuilt `wiki.html` picks up
-     the refreshed notes. Non-fatal: if skipped, the automatic safety net still prevents
-     mislabeling — you just miss prose for brand-new clusters.
+- **Refresh you must run on `--full`** (MAIN-AGENT job — it fans out; a worker subagent
+  cannot). After graphify, REGENERATE all cluster notes from the current communities. This is
+  a scripted, validated pipeline — do not hand-write notes ad hoc (that is how they regressed
+  to 138-word stubs with piped/dead links):
+
+  1. **Build briefs** — `python3 -B scripts/build_cluster_briefs.py --wiki <wiki>` writes
+     `/tmp/cluster_briefs/<NN>.md`, one per current community, each carrying the graphify
+     label + the community's top-degree member pages + the full debate/theme list, all as
+     **exact `[[type/slug]]` keys**. This is what makes dead/invented links impossible.
+  2. **Fan out one drafting agent per community** (read-only; writes only to
+     `/tmp/cluster_out/<NN>.md`). Each writes a **~700-word** standalone essay (match the
+     concept/thinker v2 depth — NOT a 2-sentence stub) that links **only exact keys from its
+     brief**, in **plain `[[type/slug]]` form**. NON-NEGOTIABLE link rules (the atlas WIKILINK
+     regex is `[[type/slug]]` only):
+       - **No pipe/alias** `[[x|y]]` — renders as raw dead text.
+       - **No `Name ([[thinkers/slug]])` doubling** — renders "Name (Name)"; link the name
+         inline (`[[thinkers/slug]]` alone renders the title) or name it in prose.
+       - Only slugs from the brief (they are guaranteed to exist).
+     Prose only — no `# Title`, no `## ` sections, no frontmatter.
+  3. **Write single-writer** — for each community write `wiki/clusters/<NN>-<labelslug>.md`
+     with frontmatter (`type: cluster`, `community: <cid>`, `title: <graphify label>`,
+     `status`, `updated`) + `# <graphify label>` + the drafted body. Remove the previous
+     top-level `clusters/*.md` first (keep `clusters/_stale/`); communities that vanished
+     just don't get a note.
+  4. **VALIDATE — hard gate before the atlas build:**
+     `python3 -B scripts/validate_cluster_notes.py --wiki <wiki>` (exit 0 required). It fails
+     on pipes, dead links, `Name ([[…]])` doubling, notes under ~600 words, too few
+     own-community member links, or a note that binds to the wrong community. Fix and re-run
+     until it passes. Only then build the atlas.
+
+  (The `build_wiki_html.py` content-matching remains the automatic safety net against
+  stale `community:` ids, but the brief→draft→validate pipeline is what keeps the notes
+  substantial and their links live.)
 
 ## Refresh the search index (automatic, last step)
 
