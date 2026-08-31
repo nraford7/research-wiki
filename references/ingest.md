@@ -62,6 +62,28 @@ Before writing anything, `touch /tmp/wb-marker` so the read-only invariant can b
 
 Create/update `/Users/noahraford/magic/wiki/literature/<slug>.md` from the **source** template in `page-templates.md`: core question, method note, position map, 10–20 key sources by tier, and links to every wiki page this source touches (filled in during Step 5).
 
+## Step 3b — Publish the readable HTML (auxiliary layer)
+
+Ingest builds the wiki PAGES from the source text; it must ALSO populate the
+readable layer `wiki/literature-html/<slug>.html` (what the atlas "Read full
+document" link opens, and the input `extract_sources.py` turns into the searchable
+`.literature-text/` RAG corpus). If this is skipped, the source is invisible to the
+"Read full document" link AND to free-form corpus chat — a silent gap (this is
+exactly how ch4–ch6 went missing).
+
+```bash
+python3 -B ~/.claude/skills/research-wiki/scripts/publish_source_html.py \
+  --source-dir "<source-dir>" --wiki /Users/noahraford/magic/wiki
+```
+
+It copies `RESEARCH-REPORT_<slug>.html` → `literature-html/<slug>.html`, scrubbing
+two known deeper-research export defects: the `Research Bible` stamp (→ `Research
+Report`; the b-word is banned — see `magic/CLAUDE.md`) and the leaked
+`<section id="…shared-brief-for-all-section-subagents…">` briefing block + its TOC
+anchor. It REFUSES to write if "bible" survives. If the source has no HTML yet,
+note it and run this later once the HTML lands (then re-run `--full` so the text
+layer + anchors catch up).
+
 ## Step 4 — Entity extraction (subagent fan-out)
 
 Dispatch one subagent per 2–3 section files (or per 2–3 monolith chunks). Give each this prompt verbatim:

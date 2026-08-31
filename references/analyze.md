@@ -217,7 +217,12 @@ python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/ma
 ```
 
 - **`--cwd` scopes indexing to the wiki ONLY.** Never omit it and never point it at `magic/` or anything under `/Users/noahraford/magic/X_Deeper_research/` — the indexer writes a `.semantic-index.db` into its root, and doing so under the read-only sources violates the safety invariant. The DB lands at `/Users/noahraford/magic/wiki/.semantic-index.db`, which the wiki `.gitignore` excludes.
-- **Source-corpus index (separate).** The primary-source RAG corpus lives at `/Users/noahraford/magic/wiki/.literature-text/` (dot-prefixed, so the wiki index walker auto-skips it — the two indexes stay separate). It's built by `extract_sources.py` from `wiki/literature-html/` and has its OWN index: refresh with `python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/magic/wiki/.literature-text --index --quiet` when the literature change. This is the corpus that `magic/CLAUDE.md` tells free-form chat to retrieve from.
+- **Source-corpus index (separate).** The primary-source RAG corpus lives at `/Users/noahraford/magic/wiki/.literature-text/` (dot-prefixed, so the wiki index walker auto-skips it — the two indexes stay separate). It's built by `extract_sources.py` from `wiki/literature-html/`. **On `--full`, first (re)build it so newly-published sources + their deep-link anchors are included, THEN refresh its index:**
+  ```bash
+  python3 -B ~/.claude/skills/research-wiki/extract_sources.py --resection      # rebuild .literature-text/*.md + anchors.json from literature-html/
+  python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/magic/wiki/.literature-text --index --quiet
+  ```
+  This is the corpus that `magic/CLAUDE.md` tells free-form chat to retrieve from — if `literature-html/` is missing sources (see ingest Step 3b), they are invisible here. `match_sources.py` (in the enrichment pass) depends on the `anchors.json` this writes, so resection must run before it for freshly-published sources to get section-level deep-links.
 - The refresh is **incremental** (only changed files re-embed) and **non-fatal**: if it fails (e.g. no `OPENAI_API_KEY` in env or `~/.env`), note it in the run summary and continue — the analyze itself still succeeded. Search is an optional enhancer, never a gate.
 - If the wiki has no `.gitignore` excluding `.semantic-index.db`, create one before the first refresh so the 13MB binary is never committed.
 
