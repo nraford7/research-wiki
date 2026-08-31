@@ -161,6 +161,41 @@ build CLI** (`graphify` the command only installs the skill / manages hooks). No
 it can't run, `build_wiki_html.py`'s partial-graph fallback still includes every page (as an
 uncolored group wired by wikilinks), so the atlas never drops content.
 
+## Refresh cluster narratives (`--full`, after graphify, before the atlas)
+
+graphify **renumbers communities on every run**, so the hand/LLM-written cluster notes in
+`wiki/clusters/*.md` go stale the moment membership shifts (new ingests create, merge, or
+split communities). Left unattended, the legend showed one cluster's name while the reader
+opened a different (old-numbered) cluster's essay. Two safeguards — one automatic, one you
+must run here:
+
+- **Automatic safety net (already in `build_wiki_html.py`).** The atlas no longer trusts a
+  narrative's `community:` frontmatter id. `_match_narratives_to_communities` attaches each
+  narrative to the *current* community whose members it most **wikilinks**, and the cluster
+  page heading is the current graphify label — so a stale id can never again surface the
+  wrong essay, and legend label always equals the reader heading. The load-bearing
+  requirement is therefore that **every cluster note wikilinks several of its community's
+  member pages**; keep that dense. A note that overlaps no current community is dropped from
+  the atlas (member list shown under the correct label, never the wrong prose).
+
+- **Refresh you must run on `--full`.** After the graphify refresh, reconcile the cluster
+  notes to the *current* communities so new clusters get prose and drifted ones get updated:
+  1. Read `wiki/graphify-out/graph.json` (member pages per `community`) and
+     `GRAPH_REPORT.md` (current `### Community N - "Name"` labels).
+  2. For **each current community**, ensure exactly one `wiki/clusters/<NN>-<slug>.md` note
+     that (a) sets `community:` to the current id and `title:` to the graphify label, and
+     (b) opens with a standalone narrative that **wikilinks 5+ of that community's
+     top-degree members** (so the atlas binds it by content). Refresh the prose of notes that
+     still map to a community; **create notes for NEW communities** (e.g. the agency and CEO
+     clusters from ch5/ch6); **archive** notes whose topic no longer forms a distinct
+     community by moving them to `wiki/clusters/_stale/` (the atlas ignores that subdir).
+  3. Scale it like the lead-enrichment pass: dispatch parallel **read-only drafting agents**
+     (one per community, given that community's member list + the v2 house style), each
+     RETURNING `{slug: markdown}`; do the file writes single-writer in the main context.
+  4. Runs **after graphify and before the atlas build**, so the rebuilt `wiki.html` picks up
+     the refreshed notes. Non-fatal: if skipped, the automatic safety net still prevents
+     mislabeling — you just miss prose for brand-new clusters.
+
 ## Refresh the search index (automatic, last step)
 
 Every `analyze` run ends by refreshing the semantic-search index so the new debates/themes/stubs are immediately searchable. Run it AFTER the commit (the index DB is git-ignored, so ordering vs. commit does not matter, but running last keeps the analytical work the priority):
