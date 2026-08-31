@@ -1,6 +1,6 @@
 ---
 name: research-wiki
-description: LLM-maintained research wiki over the book's research sources (X_Deeper_research). Use when the user says /research-wiki, or asks to ingest a research source into the wiki, run a cross-source analysis (contradictions, convergences, emergent themes), or ask a question answerable from the research-source wiki. Commands - ingest <source-dir>|--all, analyze [--full], ask <question> [--file].
+description: LLM-maintained research wiki over the book's research sources (X_Deeper_research). Use when the user says /research-wiki, or asks to ingest a research source into the wiki, run a cross-source analysis (contradictions, convergences, emergent themes), or ask a question answerable from the research-source wiki. Commands - ingest <source-dir>|--all, batch <research-dir>, analyze [--full], ask <question> [--file].
 ---
 
 # research-wiki
@@ -28,6 +28,7 @@ These are non-negotiable and apply to every operation:
 |---|---|
 | `ingest <source-dir>` / `ingest --all` | Read `references/ingest.md` and follow it exactly. |
 | `analyze` / `analyze --full` | Read `references/analyze.md` and follow it exactly. |
+| `batch <research-dir>` | Read `references/batch-ingest.md` and follow it exactly. Drives the full loop over a finished directory: ingest one source at a time, delta-analyze every 3, then a final `analyze --full`. Resumable; skips already-ingested and unfinished runs. |
 | `ask <question>` / `ask <question> --file` | Read `references/ask.md` and follow it exactly. |
 | (any operation, for page formats) | Read `references/page-templates.md` — frontmatter, body templates, alias/slug/index rules. |
 
