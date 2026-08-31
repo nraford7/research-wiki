@@ -1,160 +1,135 @@
 # research-wiki
 
-An LLM-maintained research wiki that sits between you and a pile of deep-research
-documents — and turns them into something you can *navigate, argue with, browse,
-and chat with*.
+Turn a stack of deep-research documents into a wiki you can browse, search, and question.
 
-It follows Andrej Karpathy's "LLM wiki" pattern: interlinked plain-markdown pages,
-maintained incrementally by the model, with you as editor-in-chief. On top of the
-wiki it adds a browsable HTML **atlas**, a primary-source **chat corpus**, and
-**deep-links** from each concept down to the exact section of the source it came
-from.
-
-It's a [Claude Code](https://claude.com/claude-code) skill: you drive it with
-`/research-wiki …` commands.
+`research-wiki` is a [Claude Code](https://claude.com/claude-code) skill. You point it at long research reports. It reads them, builds a linked set of notes, finds where the reports agree and disagree, and makes one web page you can explore. You run it with `/research-wiki` commands.
 
 ---
 
-## The three layers
+## What it is
 
-```
-deep research  ─▶  SOURCES        the raw sources: long literature reviews, one per question
-   (your        (read-only)      e.g. "What is wu-wei?", "What is life?"  (HTML)
-   pipeline)         │
-                     │  /research-wiki ingest   (the model reads each source, extracts
-                     ▼                        concepts + thinkers, section-scoped)
-                  WIKI            interlinked markdown: concepts/, thinkers/, debates/,
-                (the map)         themes/, answers/  — an Obsidian vault + git repo
-                     │
-                     │  /research-wiki analyze   (finds where sources agree → themes,
-                     ▼                         where they collide → debates)
-                  ATLAS + CORPUS  wiki.html (browse) · .literature-text/ (chat) · deep-links
-```
+You start with source documents: long, deep research reports, one per question. For example, "What is wu-wei?" or "What is life?". A stack of files like this is hard to use. You cannot see how the ideas connect. You cannot find every place two authors disagree.
 
-- **Sources** = the source of truth. Read-only; never modified.
-- **Wiki** = the distilled, cross-linked map. What relates to what; where the debates are.
-- **Atlas / corpus** = how you *use* it: a self-contained HTML reader + graph, and a
-  semantic index over the primary text so you can chat with the whole corpus.
+research-wiki sits between you and those documents. It reads them and builds three things: a linked wiki, a browsable atlas, and a searchable copy of the source text. The model does the reading and writing. You stay the editor.
+
+The source documents are never changed. The skill only reads them.
 
 ---
 
-## What you get
+## What it does
 
-- **An interlinked wiki** — every concept and thinker is one markdown page,
-  cross-linked with `[[type/slug]]` wikilinks. Opens as an [Obsidian](https://obsidian.md) vault.
-- **Cross-source synthesis** — `analyze` promotes genuine agreements into **themes**
-  and genuine disagreements into **debates**, each with quoted positions and citations.
-- **A styled atlas** (`wiki.html`) — one self-contained, offline HTML file:
-  a community-colored knowledge graph + a searchable index + a reading pane. Shareable;
-  no server, no Obsidian needed. The graph labels its clusters at rest; selecting a node
-  highlights it and its immediate neighbours (dimming the rest) and labels them; topic
-  chips isolate one kind of entry (click more to add kinds back); a *Clear selection*
-  button and a collapsible *Panel* round it out. Labels and strokes hold a constant size
-  as you zoom.
-- **Chat with the corpus** — the 17 sources are extracted to a searchable primary-text
-  index; a project rule makes plain questions retrieve and answer from the *source*,
-  not the summaries.
-- **Deep-links to source** — each enriched entry links to the exact source *section*
-  it draws on.
+- It **reads each source** and pulls out the key concepts and thinkers. Each one becomes its own note.
+- It **links the notes** to each other, so you can see what relates to what.
+- It **compares the sources**. Where several agree, it writes a **theme**. Where they disagree, it writes a **debate**, with both sides quoted and cited.
+- It **builds an atlas**: one web page with a map of the ideas, a search box, and a reading pane.
+- It **makes the source text searchable**, so you can ask plain questions and get answers from the real documents, not from a summary.
 
 ---
 
-## How it works — commands
+## What you need to run it
 
-| Command | What it does |
-|---|---|
-| `/research-wiki ingest <source-dir>` / `ingest --all` | Read a source, extract its concepts + thinkers into wiki pages (merging into existing pages section-by-section). |
-| `/research-wiki analyze` / `analyze --full` | Sweep for cross-source contradictions (→ `debates/`) and convergences (→ `themes/`); fix broken links; then auto-refresh search + rebuild the atlas. |
-| `/research-wiki ask <question>` / `ask <q> --file` | Answer a question from the accumulated wiki pages; `--file` saves the answer under `answers/`. |
+- **Claude Code.** research-wiki is a skill you run inside it.
+- **Your source documents.** One folder per report, as HTML or markdown. A separate research pipeline makes these. research-wiki only reads them.
+- **Python** with a few libraries: `markdown`, `beautifulsoup4`, `networkx`, `PyYAML` (and `pytest` to run the tests).
+- **Two optional helper skills.** The wiki still works without them, with less polish:
+  - **semantic-search** — powers the atlas search box and the "ask the corpus" answers. It reads an `OPENAI_API_KEY` from your environment or `~/.env`.
+  - **graphify** — groups the ideas into colored clusters on the map.
 
-`analyze` ends by automatically (a) refreshing the semantic-search index and
-(b) rebuilding `wiki.html`. Both are non-fatal enhancers.
-
-### Example
-
-```
-/research-wiki ingest 2_Chapter\ 2/ch2-q1-wu-wei
-  → concepts/wu-wei.md, concepts/ziran.md, thinkers/laozi.md, …
-
-/research-wiki analyze --full
-  → debates/do-experts-think.md, themes/tacit-knowledge-resists-codification.md, …
-  → wiki/wiki.html rebuilt · search index refreshed
-
-/research-wiki ask "does cognition require being alive?"
-  → an answer citing [Thompson, 2022] vs [Levin, 2023], linking [[debates/does-cognition-require-life]]
-```
-
-A concept or thinker page looks like: a standalone **narrative overview** that analyses
-the idea and how it interrelates with its neighbours (length scaled to how much the
-sources support — no padding, no book-framing), then a `## In <source>` section per source
-(positions + citations), then `See also` links, and a **Sources** block that deep-links to
-the exact source sections. All 134 concepts and 117 thinkers are enriched.
-
----
-
-## The extra tooling (Python)
-
-Run by `analyze`, or standalone:
-
-- **`build_wiki_html.py`** — builds the atlas `wiki.html` from the wiki pages +
-  the graph. Offline, self-contained.
-  `python3 build_wiki_html.py --wiki /path/to/wiki`
-- **`extract_sources.py`** — extracts the literature' HTML into a clean, section-chunked
-  markdown corpus (`.literature-text/`) for retrieval, and captures section anchors for
-  deep-linking. `python3 extract_sources.py --resection`
-- **`match_sources.py`** — matches each enriched concept to the most relevant
-  *section* of every source it cites, and records the deep-link pointers.
-  `python3 match_sources.py`
-
-Tests: `python3 -m pytest tests/ -q`
-
----
-
-## Dependencies
-
-**Companion skills** (optional but recommended — the wiki degrades gracefully without them):
-
-- **semantic-search** — a local Claude Code skill: hybrid BM25 + embedding search
-  (OpenAI embeddings + sqlite-vec + FTS5). Powers the atlas search and the
-  "chat with the corpus" retrieval.
-- [**graphify**](https://pypi.org/project/graphifyy/) — community detection over the
-  wiki; colors the atlas graph and seeds `analyze`'s themes. `pip install graphifyy`.
-
-**Python:** `markdown`, `beautifulsoup4`, `networkx`, `PyYAML` (+ `pytest` for tests).
-
+Install the Python parts:
 ```bash
 pip install markdown beautifulsoup4 networkx pyyaml pytest graphifyy
 ```
 
 ---
 
-## Layout
+## How it works
 
-```
-research-wiki/
-  SKILL.md              # the skill: commands, safety invariants, dispatch
-  references/           # the exact procedures for ingest / analyze / ask + page templates
-  build_wiki_html.py    # atlas generator
-  extract_sources.py     # source → corpus extraction + section anchors
-  match_sources.py      # concept → source-section deep-link matcher
-  tests/                # pytest
-  README.md · HANDOVER.md
-```
+You drive it with four commands.
 
-The **wiki content itself** (pages, the atlas HTML, the extracted corpus, the graph)
-lives in a separate directory and is not part of this repo — this repo is the tooling.
+| Command | What it does |
+|---|---|
+| `/research-wiki ingest <folder>` | Read one source document. Turn its concepts and thinkers into wiki notes. |
+| `/research-wiki batch <folder>` | Do a whole folder of finished documents. It reads them one at a time, checks its work as it goes, and ends with a full analysis. Safe to re-run. |
+| `/research-wiki analyze` | Compare the sources. Write the themes and debates. Fix broken links. Rebuild the atlas and the search index. |
+| `/research-wiki ask "<question>"` | Answer a question from the wiki. Add `--file` to save the answer. |
+
+The normal flow: **ingest** (or **batch**) your documents, then **analyze**. `analyze --full` also writes a full narrative for every note, groups the map into clusters, and rebuilds the web page.
+
+### Example
+```
+/research-wiki batch "5_Chapter 5"
+  → reads every finished report in the folder
+  → concepts/…, thinkers/…, debates/…, themes/… all written
+  → wiki.html and the search index rebuilt
+
+/research-wiki ask "does cognition require being alive?"
+  → an answer that cites [Thompson, 2022] against [Levin, 2023]
+    and links [[debates/does-cognition-require-life]]
+```
 
 ---
 
-## Safety invariant
+## What you get
 
-The sources are **read-only**. No operation ever writes, moves, or deletes
-anything under the literature directory; the wiki is maintained entirely in its own
-tree, in its own git repo.
+- **A linked wiki.** Every concept and thinker is one markdown note. The notes link to each other. You can open the whole thing as an [Obsidian](https://obsidian.md) vault.
+- **Themes and debates.** Cross-source notes that show where the authors agree and where they clash, with quotes and citations.
+- **One atlas web page (`wiki.html`).** It holds a map of the ideas (colored by cluster), a search box, and a reading pane. It is one self-contained file. It needs no server and no Obsidian. You can share it.
+- **A searchable copy of the source text.** You can ask plain questions and get answers grounded in the real documents.
+- **Deep-links.** Each note links down to the exact section of the source it came from.
 
-## A note on paths
+Today's wiki holds 50 source documents: 655 concepts, 427 thinkers, 35 debates, 24 themes, and 19 topic clusters. Every concept and thinker note carries a full narrative.
 
-This skill is currently wired to one author's setup (paths under
-`/Users/noahraford/magic/…`). To reuse it, adjust the hardcoded paths at the top of
-the three Python scripts and in `SKILL.md` / `references/`. No API keys are stored in
-the code — `semantic-search` reads `OPENAI_API_KEY` from the environment or `~/.env`.
+---
+
+## What you can do with it
+
+- **Browse the whole field** on one page, and follow the links between ideas.
+- **Find the fault lines** fast. The debates collect every real disagreement in one place.
+- **Chat with the sources.** Ask a question in plain words and get a cited answer from the primary text.
+- **Trace any claim** back to the exact source section through the deep-links.
+- **Share the atlas** as a single file, or host it. This project runs it password-protected on Railway.
+- **Keep it growing.** Each new document you ingest makes the map richer. Re-run analyze to find the new agreements and clashes.
+
+---
+
+## The tooling (Python)
+
+`analyze` and `batch` run these for you. You can also run them alone.
+
+- **`build_wiki_html.py`** — builds the atlas `wiki.html` from the notes and the graph.
+- **`extract_sources.py`** — turns the source HTML into clean, section-sized text for search, and records the section anchors for deep-links.
+- **`match_sources.py`** — links each note to the right source section.
+- **`scripts/batch_ingest.py`** — plans and tracks a full folder run (ingest, then analyze).
+- **`scripts/enrich_splice.py`** — writes the narrative lead into each note.
+- **`scripts/build_cluster_briefs.py`** and **`scripts/validate_cluster_notes.py`** — build the cluster notes and check that every link resolves.
+- **`scripts/publish_source_html.py`** — copies each source's readable HTML into the wiki, and removes export junk.
+
+Run the tests:
+```bash
+python3 -m pytest tests/ -q
+```
+
+---
+
+## Repo layout
+```
+research-wiki/
+  SKILL.md          # the skill: commands, safety rules, dispatch
+  references/       # the exact steps for ingest / batch / analyze / ask + page templates
+  scripts/          # batch, enrich, cluster, and publish helpers
+  build_wiki_html.py  extract_sources.py  match_sources.py
+  tests/
+  README.md  HANDOVER.md
+```
+
+This repo is the **tooling**. The wiki content — the notes, the atlas, the extracted text, the graph — lives in a separate folder.
+
+---
+
+## Safety
+
+The source documents are read-only. No command ever writes to, moves, or deletes them. The wiki lives in its own folder and its own git repo.
+
+## Setup note
+
+The skill is wired to one author's paths (`/Users/noahraford/magic/…`). To reuse it, change the paths at the top of the Python scripts and in `SKILL.md` and `references/`. No API keys live in the code.
