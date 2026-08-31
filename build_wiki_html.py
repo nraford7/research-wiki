@@ -380,6 +380,7 @@ ATLAS_CSS = """
 .reader .doc-actions{margin:0 0 20px;}
 .reader .read-full{display:inline-block;font:700 .68rem var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--paper);background:var(--accent);border:1px solid var(--accent);padding:7px 13px;border-radius:3px;text-decoration:none;}
 .reader .read-full:hover{opacity:.85;}
+.reader .cluster-more{color:var(--muted);font-style:italic;margin:.5em 0 0;font-size:.92rem;}
 .front .lead{font-size:1.12rem;}
 .front h1{font:500 clamp(2.4rem,5vw,3.6rem)/1 var(--serif);letter-spacing:-.03em;margin:.1em 0 .5em;}
 .front .cards a,.front .qlist a{text-decoration:none;}
@@ -977,12 +978,18 @@ def build_cluster_pages(wiki, pages, graph, labels):
         return labels.get(cid) or narr.get(cid, {}).get("title") or f"Community {cid}"
 
     payload = {}
+    CAP = 30  # big clusters list only their most-connected members
     for cid, mems in members.items():
         parts = [narr.get(cid, {}).get("html", "")]
+        total = len(mems)
+        shown = mems[:CAP]  # mems already sorted by degree desc
         by_type = {}
-        for m in mems:
+        for m in shown:
             by_type.setdefault(m["type"], []).append(m)
-        parts.append('<h2>In this cluster</h2>')
+        head = "In this cluster"
+        if total > CAP:
+            head += f" — top {CAP} of {total} by connectivity"
+        parts.append(f'<h2>{head}</h2>')
         for typ, tlabel in CLUSTER_TYPE_ORDER:
             if typ in by_type:
                 parts.append(f'<h3>{tlabel} ({len(by_type[typ])})</h3><ul>')
@@ -990,6 +997,9 @@ def build_cluster_pages(wiki, pages, graph, labels):
                     f'<li><a class="wikilink" data-page="{m["key"]}">'
                     f'{_html.escape(m["label"])}</a></li>' for m in by_type[typ])
                 parts.append('</ul>')
+        if total > CAP:
+            parts.append(f'<p class="cluster-more">+{total - CAP} more '
+                         f'(open the cluster note in Obsidian for the full list)</p>')
         rel = related.get(cid, [])
         if rel:
             links = " · ".join(f'<a class="cluster-link" data-community="{rc}">'
