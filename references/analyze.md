@@ -134,6 +134,15 @@ Then commit (if the wiki repo exists): `cd /Users/noahraford/magic/wiki && git a
 
 ## Enrichment pass (`--full` only)
 
+> **Run this from the MAIN orchestrator agent, never from a delegated worker subagent.**
+> The pass fans out parallel drafting agents, and **subagents cannot spawn subagents** in
+> this harness — a worker has no Agent/Task tool. So if you delegated ingest/merge to a
+> single-writer worker (correct — those steps must be single-writer), that worker must
+> STOP before this enrichment pass **and** the cluster-narrative refresh above, and hand
+> both fan-out steps back to the main agent. A worker that tries to enrich in its own
+> context will grind serially and blow its budget. Same rule for a `batch` run: the final
+> `analyze --full` is a main-agent job.
+
 When a chapter is complete, `analyze --full` finishes every page. Concept/thinker pages
 still at ingest level (frontmatter lacks `overview: true`) get a standalone **narrative
 lead** per the v2 house style in `HANDOVER.md` — standalone analysis of the idea, length
@@ -144,9 +153,12 @@ cross-linked. Mechanics that scale (used for 250 then 400 pages):
   gold-sample exemplar + the v2 rules). Each reads a page (its definition + `## In <source>`
   sections) and RETURNS the lead as JSON `{slug: markdown}` — never edits files, so voice
   stays consistent and the insert is single-writer.
-- Insert with a splice that replaces the text between the `# Title` line and the first
-  `## ` and sets `overview: true`. Then run `match_sources.py` (deep-links) and **strip any
-  dangling `[[links]]` to plain text** (agents guess slugs; this guarantees clean links).
+- Insert with the reusable splice tool `scripts/enrich_splice.py --wiki <wiki> --input
+  drafts.json` — it replaces the text between the `# Title` line and the first `## `, sets
+  `overview: true`, bumps `updated:`, and idempotently SKIPS pages already enriched
+  (collect the drafting agents' returns into one `{page: lead}` JSON, then run it once).
+  Then run `match_sources.py` (deep-links) and **strip any dangling `[[links]]` to plain
+  text** (agents guess slugs; this guarantees clean links).
 - **Skip pages that already have `overview: true`.** Delta `analyze` does NOT enrich — a
   page may still gain `## In` sections from later ingests, which would stale its narrative.
 

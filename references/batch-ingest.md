@@ -51,8 +51,15 @@ Execute the single action it prints, then call `--next` again:
 | `INGEST <abs-dir>` | Follow `references/ingest.md` **exactly** on that dir (Steps 0–6, incl. the read-only proof and the git commit + the one `\| ingest \|` log line). |
 | `INGEST --force <abs-dir>` | Same, but pass `--force` — the content changed since a prior ingest; ingest.md's idempotency check would otherwise skip it. |
 | `ANALYZE_DELTA` | Follow `references/analyze.md` in **delta** mode (its scope auto-derives from the log: everything ingested since the last analyze). Writes the report, the one `\| analyze \| scope:delta \|` log line, commits, refreshes search. |
-| `ANALYZE_FULL` | Follow `references/analyze.md` with **`--full`**: the Enrichment pass (narrative leads on ingest-level pages), the graphify refresh, then the atlas build + search refresh. This is the "enrich everything" finish. |
+| `ANALYZE_FULL` | Follow `references/analyze.md` with **`--full`**: the Enrichment pass (narrative leads on ingest-level pages), the graphify refresh, the cluster-narrative refresh, then the atlas build + search refresh. This is the "enrich everything" finish. |
 | `DONE` | Stop. Everything is ingested, analyzed, and a full analyze is current. |
+
+> **Who runs which step.** The `INGEST` steps are single-writer and may be delegated to a
+> worker subagent (one at a time). The `ANALYZE_FULL` fan-out steps — the per-page
+> **enrichment** and the **cluster-narrative refresh** — must be run by the **MAIN
+> orchestrator agent**, because subagents cannot spawn subagents in this harness. If you
+> delegated the ingests to a worker, do NOT also hand it `ANALYZE_FULL`; run the full pass
+> yourself (dispatch the drafting agents, splice with `scripts/enrich_splice.py`).
 
 **Do not batch the ingests or skip the log lines.** Each `INGEST` is a full
 ingest.md run ending in its own git commit + log line — that is what makes the
