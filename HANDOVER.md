@@ -9,16 +9,16 @@ every entry reads as a real article and links back to its source sections.
 An enriched page has, in order:
 
 1. A **standalone encyclopedic entry** that replaces the old one-line definition —
-   placed between the `# Title` and the first `## In <bible>` section. Length scales to
+   placed between the `# Title` and the first `## In <source>` section. Length scales to
    the source: rich pages ~1,200–1,500 words; thin, single-sourced pages 500–900.
    **Never pad or invent to hit a length** — honesty over length. See the v2 house style.
 2. `overview: true` in the frontmatter. (This flag tells the atlas to hide the raw
-   `## In <bible>` bullet sections in the reader and show a **Sources** block instead.
+   `## In <source>` bullet sections in the reader and show a **Sources** block instead.
    The bullets stay in the markdown for Obsidian + re-ingest.)
-3. A `sources: {bible-slug: section-anchor}` frontmatter line (written by
+3. A `sources: {source-slug: section-anchor}` frontmatter line (written by
    `match_sources.py`) → the atlas renders anchored deep-links to the source sections.
 
-The `## In <bible>` sections and `See also` stay in the file untouched.
+The `## In <source>` sections and `See also` stay in the file untouched.
 
 ## Scope
 
@@ -58,31 +58,64 @@ contribution and where they're contested; same standalone, non-book-framed voice
 significance ("rewires the whole question", "the whole frame shifts", "why it matters").
 Analyze the ideas directly. Where the sources discuss AI / minds / machines, keep the
 substance — stated as the idea itself and attributed to its author, not as "what the
-bible says".
+source says".
 
-**Write about the ideas, not the source documents (hard rule):** the entry analyses the
-*ideas*, never the research bibles that hold them. NEVER make a bible / document / "the page"
-the subject: no "the bible(s)", "both bibles", "each bible", "this bible", "Chapter 2",
-"Q4/Q8", "the corpus", "the source material" / "the sourced material", "the page", "the
-sources agree/say", "position map", or the "Camp (a)/(b)/(c)/(d)" taxonomy. Attribute claims
-to their real authors/traditions and cite normally. You MAY `[[bibles/slug]]`-link, but the
-prose is never a review of the bibles. Write "across Taoist and Confucian thought", not
-"across both bibles"; "one reading holds… another denies…", not "the sourced material is split".
+**A source is a vessel, not a subject (hard rule).** A research source is a *container* for
+evidence and argument; the prose is always about what is INSIDE it — the studies, findings,
+thinkers, traditions, mechanisms — never about the container. The entry analyses the *ideas*,
+never the documents that hold them. This bans every grammatical form that makes a research
+document the actor, not just the bare word "source":
+- **Bare / plural:** "the source(s)", "both sources", "each source", "this source".
+- **Quantified** (the subtle one): "three of the sources converge", "several sources agree",
+  "all the life-and-mind sources", "N of the sources say". Rewrite to the evidence itself —
+  "three independent lines of evidence converge", "the autopoietic tradition holds".
+- **Named-by-topic** (the other subtle one): "the extended-cognition source states…", "the
+  what-is-life source pushes…", "the intelligence-without-brains source generalizes…".
+  Rewrite the subject to the actual source of the claim — "Varela, Thompson and Rosch
+  state…", "Maturana and Varela push the point to its limit…", "Di Paolo and Thompson
+  generalize the move…".
+- **Page / material as subject** (the most common real tic): "this page", "this page's
+  material", "within this page's material", "on this page", "the material (here)", "the
+  sourcing here", "the sources here". These frame the entry as a document about documents.
+  Drop the frame and state the relation directly — "Within this page's material, X connects
+  to Y" becomes "X connects to Y"; "the material treats it as settled" becomes "it is
+  treated as settled" or, better, name who settles it.
+- **Also banned as subjects:** "Chapter 2", "Q4/Q8", "the corpus", "the source material" /
+  "the sourced material", "the sources agree/say", "position map", the
+  "Camp (a)/(b)/(c)/(d)" taxonomy.
+
+**What IS allowed as a subject** (so the rule isn't over-applied): the *content* — a topic,
+an idea, a concept, an author, a tradition, a study, a school. "The concept descends from…",
+"Bentham's footnote decoupled…", "the autopoietic tradition holds…", "the resemblance
+heuristic explains…" are all fine. The ban is strictly on the *container* that holds the
+content: source / page / material / corpus / document / chapter. Content = subject; vessel =
+never. (Note the separate, unrelated style rule against opening an entry with the bare words
+"This concept…" — that's about weak openings, not about container-talk.)
+
+Attribute every claim to its real author / study / tradition and cite normally. You MAY
+`[[literature/slug]]`-link, and the structured `## Evidence from the literature` section keeps its links —
+but the *prose* is never a review of the literature. **The test:** if you deleted every
+`[[literature/…]]` link and the corpus itself, each sentence must still read as a claim about
+the world, not about a set of documents. Write "across Taoist and Confucian thought", not
+"across both sources"; "one reading holds… another denies…", not "the sourced material is split".
 
 **Length scales to source:** rich pages ~1,200–1,500 words; thin, single-sourced pages
 500–900. Never pad, repeat, or invent to hit a length.
 
-**Fidelity:** weave only from that page's existing per-bible material; don't invent
+**Fidelity:** weave only from that page's existing per-source material; don't invent
 facts or citations. Reuse the real author citation tokens (`[Surname, YYYY]`) — but NEVER
-carry the document-pointer tokens into prose: drop `[bible §N]`, `[chN-qN-…]`,
-`[corpus synthesis]`, `[round2 synthesis]`, `[bible synthesis]` and the like (they name the
+carry the document-pointer tokens into prose: drop `[source §N]`, `[chN-qN-…]`,
+`[corpus synthesis]`, `[round2 synthesis]`, `[source synthesis]` and the like (they name the
 source doc, not a claim). A few well-placed cites, not one per sentence.
 
 **Banned** (house rules): "load-bearing", "ship/shipped", "delve", "tapestry",
-"testament to", "at its core", "in essence", "it's worth noting"; document-talk ("the
-bible(s)", "both bibles", "the corpus", "the source(d) material", "the page", "Chapter N",
-"Q4/Q8", "Camp (a–d)", "position map", `[bible §…]`, `[chN-qN…]`); no "This concept…"
-openings; no em-dash pile-ups; no letter-spaced EMIR.
+"testament to", "at its core", "in essence", "it's worth noting"; document-as-subject in
+ALL forms — bare ("the source(s)", "both sources", "the corpus", "the source(d) material",
+"the page", "this page", "this page's material", "the material here"), quantified ("three of
+the literature converge", "several sources agree", "the life-and-mind sources"), named-by-topic
+("the extended-cognition source states", "the what-is-life source argues"), and locators
+("Chapter N", "Q4/Q8", "Camp (a–d)", "position map", `[source §…]`, `[chN-qN…]`); no "This concept…" openings; no em-dash pile-ups; no
+letter-spaced EMIR.
 
 **Gold-standard exemplar:** the `buddha-nature` entry (~1,450 words) — match its depth
 and standalone voice, scaling length to how rich each page's sourcing is.
@@ -93,7 +126,7 @@ and standalone voice, scaling length to how rich each page's sourcing is.
 
 ## The process (per page)
 
-1. Read the page's full body (its definition + every `## In <bible>` section).
+1. Read the page's full body (its definition + every `## In <source>` section).
 2. Draft the narrative lead per the style above.
 3. Replace the text between the `# Title` line and the first `## ` heading with the
    narrative; add `overview: true` to the frontmatter. (The 8 pilots were inserted
@@ -121,13 +154,13 @@ per HANDOVER.md style", which will spec → plan → parallel-execute → review
 
 ```bash
 # 1. deep-link pointers for the newly-enriched pages (matches overview:true pages)
-python3 -B ~/.claude/skills/wiki-bible/match_sources.py
+python3 -B ~/.claude/skills/research-wiki/match_sources.py
 
-# 2. rebuild the atlas (also happens automatically on /wiki-bible analyze)
-python3 -B ~/.claude/skills/wiki-bible/build_wiki_html.py --wiki /Users/noahraford/magic/wiki --quiet
+# 2. rebuild the atlas (also happens automatically on /research-wiki analyze)
+python3 -B ~/.claude/skills/research-wiki/build_wiki_html.py --wiki /Users/noahraford/magic/wiki --quiet
 ```
 
-(If you add/adjust bibles, first re-run `python3 -B ~/.claude/skills/wiki-bible/extract_bibles.py --resection`
+(If you add/adjust sources, first re-run `python3 -B ~/.claude/skills/research-wiki/extract_sources.py --resection`
 to refresh the corpus + anchors.)
 
 ## Verify a batch
@@ -148,14 +181,14 @@ git -C /Users/noahraford/magic/wiki commit -m "wiki: narrative + deep-links, cha
 
 ## Gotchas
 
-- **Thinkers use `name:` (not `title:`) and bibles use `question:`** — the tooling
+- **Thinkers use `name:` (not `title:`) and sources use `question:`** — the tooling
   already resolves titles via a chain, but keep thinker narratives identity-first.
 - **`match_sources.py` only touches `overview: true` pages** — run it *after* inserting
   narratives, not before.
-- **Coarse bibles** (ch1-q1, ch1-q2, ch1-q6) are re-sectioned to h2/h3/h4 so their
+- **Coarse sources** (ch1-q1, ch1-q2, ch1-q6) are re-sectioned to h2/h3/h4 so their
   deep-links are precise; don't re-bundle their HTML from source without re-running
   `--resection`.
-- **Read-only bibles**: never edit anything under `X_Deeper_research/`. All writes are
+- **Read-only sources**: never edit anything under `X_Deeper_research/`. All writes are
   under `wiki/`.
 - **The atlas + corpus + graph are git-ignored** (rebuildable). Only the markdown
   pages are committed.

@@ -1,43 +1,43 @@
 # ingest — procedure
 
-Ingest one bible (`ingest <bible-dir>`) or every bible (`ingest --all`) into the wiki. Bibles are read-only (see SKILL.md Safety invariants). Page formats come from `page-templates.md`. All commands assume zsh — use `find`, never bare globs.
+Ingest one source (`ingest <source-dir>`) or every source (`ingest --all`) into the wiki. Sources are read-only (see SKILL.md Safety invariants). Page formats come from `page-templates.md`. All commands assume zsh — use `find`, never bare globs.
 
 If the wiki does not exist yet, do the First-run bootstrap from SKILL.md before step 0.
 
-## Step 0 — Is this dir an ingestable bible?
+## Step 0 — Is this dir an ingestable source?
 
 A directory `$D` qualifies iff its name matches `ch<N>-q<N>-*`, its name does NOT contain `superseded` and does NOT end in a timestamp suffix (regex `-\d{8}t\d+z$`, case-insensitive), AND at least one of these three tests succeeds (try in order):
 
 ```bash
 # (a) Sections/ with >=3 md files:
 [ "$(find "$D/Sections" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]
-# (b) a root monolith named like a bible (case-insensitive):
-[ "$(find "$D" -maxdepth 1 -iname '*bible*.md' | wc -l)" -ge 1 ]
+# (b) a root monolith named like a source (case-insensitive):
+[ "$(find "$D" -maxdepth 1 -iname '*source*.md' | wc -l)" -ge 1 ]
 # (c) exactly one root .md and it is >= 50KB:
 [ "$(find "$D" -maxdepth 1 -name '*.md' | wc -l)" -eq 1 ] && [ "$(find "$D" -maxdepth 1 -name '*.md' -size +50k | wc -l)" -eq 1 ]
 ```
 
-Known irregulars this must catch: `ch1-q1` (single root md → test c), `ch1-q6` (`western-philosophy-of-mind-BIBLE.md` → test b), `ch1-q2` (monolith + Sources, no Sections/ → test b/c). If passed an explicit dir that fails all three, report "not a bible" and stop.
+Known irregulars this must catch: `ch1-q1` (single root md → test c), `ch1-q6` (`western-philosophy-of-mind-BIBLE.md` → test b), `ch1-q2` (monolith + Sources, no Sections/ → test b/c). If passed an explicit dir that fails all three, report "not a source" and stop.
 
 ## Step 1 — Validate + idempotency
 
-Derive `slug` = the bible dir's basename. Compute the content hash:
+Derive `slug` = the source dir's basename. Compute the content hash:
 
 ```bash
-D="<bible-dir>"
+D="<source-dir>"
 if [ "$(find "$D/Sections" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]; then
   CONTENT=$(find "$D/Sections" -maxdepth 1 -name '*.md' ! -name 'bibliography.md' ! -name 'dedup-decisions.md' | sort)
 else
-  CONTENT=$(find "$D" -maxdepth 1 -iname '*bible*.md' | sort)
+  CONTENT=$(find "$D" -maxdepth 1 -iname '*source*.md' | sort)
   [ -z "$CONTENT" ] && CONTENT=$(find "$D" -maxdepth 1 -name '*.md' | sort)
 fi
 SOURCES=$(find "$D/Sources" -maxdepth 1 \( -name 'claims.jsonl' -o -name 'bibliography.md' -o -name 'bibliography.bib' \) 2>/dev/null | sort)
 printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0 cat | shasum -a 256 | cut -c1-12
 ```
 
-**CRITICAL — NUL-delimit, never bare `xargs cat`.** Every bible path contains a space (`.../2_Chapter 2/...`); a bare `xargs cat` word-splits on it and `cat` fails on every file, so the hash is garbage or the empty-input hash. The `tr '\n' '\0' | xargs -0 cat` above is space-safe (macOS `xargs` has no `-d`, so use `-0`). Do not "simplify" it back.
+**CRITICAL — NUL-delimit, never bare `xargs cat`.** Every source path contains a space (`.../2_Chapter 2/...`); a bare `xargs cat` word-splits on it and `cat` fails on every file, so the hash is garbage or the empty-input hash. The `tr '\n' '\0' | xargs -0 cat` above is space-safe (macOS `xargs` has no `-d`, so use `-0`). Do not "simplify" it back.
 
-- **Empty-hash guard:** if the result is `e3b0c44298fc` (SHA-256 of empty input), STOP — the bible resolved to zero content files. Report it; do not ingest.
+- **Empty-hash guard:** if the result is `e3b0c44298fc` (SHA-256 of empty input), STOP — the source resolved to zero content files. Report it; do not ingest.
 - **Idempotency:** check the log:
   ```bash
   grep -F "| ingest | <slug> | sha256:<hash>" /Users/noahraford/magic/wiki/log.md
@@ -46,11 +46,11 @@ printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0
 - **Lock check** — an active lock is a *live lease*, not transaction/backup residue. Scan ONLY `.locks/leases/*/holders.json` (64 KB), never the 500 MB+ `.transactions` tree (a recursive grep there false-positives on stale migration backups and is slow):
   ```bash
   find "<chapter-dir>/.locks/leases" -name holders.json 2>/dev/null \
-    | tr '\n' '\0' | xargs -0 grep -l '<bible-slug>' 2>/dev/null
+    | tr '\n' '\0' | xargs -0 grep -l '<source-slug>' 2>/dev/null
   ```
-  Any output → a live lease names this bible; an active deeper-research run may be writing it: skip + warn. No output → proceed. (Idle leases hold `[]` and match nothing.)
+  Any output → a live lease names this source; an active deeper-research run may be writing it: skip + warn. No output → proceed. (Idle leases hold `[]` and match nothing.)
 
-## Step 2 — Read the bible (read-only)
+## Step 2 — Read the source (read-only)
 
 - Content: `Sections/*.md` EXCLUDING `bibliography.md` and `dedup-decisions.md` (reference lists, not content). If there is no qualifying `Sections/`, read the monolith and chunk it on `#`/`##` headings into ~2–4k-word units.
 - `Sources/claims.jsonl`: these are SOURCE records (`url, title, year, slice, tier`) — no claim text, no author. Skip malformed lines with a per-line warning; a missing/empty file is a warning, not a failure.
@@ -58,16 +58,16 @@ printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0
 
 Before writing anything, `touch /tmp/wb-marker` so the read-only invariant can be verified after (see Step 6).
 
-## Step 3 — Bible page
+## Step 3 — Source page
 
-Create/update `/Users/noahraford/magic/wiki/bibles/<slug>.md` from the **bible** template in `page-templates.md`: core question, method note, position map, 10–20 key sources by tier, and links to every wiki page this bible touches (filled in during Step 5).
+Create/update `/Users/noahraford/magic/wiki/literature/<slug>.md` from the **source** template in `page-templates.md`: core question, method note, position map, 10–20 key sources by tier, and links to every wiki page this source touches (filled in during Step 5).
 
 ## Step 4 — Entity extraction (subagent fan-out)
 
 Dispatch one subagent per 2–3 section files (or per 2–3 monolith chunks). Give each this prompt verbatim:
 
 ```text
-Read these files from a research bible (read-only): <paths>. Return raw structured
+Read these files from a research source (read-only): <paths>. Return raw structured
 data (no prose): candidate CONCEPTS, THINKERS, and INTERNAL DEBATES. For each:
 name; aliases; one-line definition/identity; 2–6 key claims, each with its inline
 citation copied exactly as it appears (grammar: [Surname, YYYY] / [A, YYYY; B, YYYY]
@@ -76,18 +76,18 @@ matching the grammar are prose — ignore them as citations. Zero entities is a
 valid answer.
 ```
 
-A bible yielding zero entities still gets a stub bible page + a warning.
+A source yielding zero entities still gets a stub source page + a warning.
 
 ## Step 5 — Dedup + merge (single writer, main context)
 
 Do the merge yourself in the main context (never in a subagent — single writer). For each candidate:
 
 - Match against existing pages by slug + aliases, **same type only** (concepts vs concepts, thinkers vs thinkers).
-- **Existing page:** section-scoped replace of its `## In <bible-slug>` section (create the section if absent); add this bible to the page's `bibles:` frontmatter if not already there. Never touch other bibles' sections or the preamble.
+- **Existing page:** section-scoped replace of its `## In <source-slug>` section (create the section if absent); add this source to the page's `sources:` frontmatter if not already there. Never touch other sources' sections or the preamble.
 - **New page:** create from the concept/thinker template; `status: stub` if it carries <2 claims, else `draft`.
 - **Alias conflict:** if a candidate's alias is already held by another page of the same type, do NOT add the alias — note the conflict for the next `analyze` report.
 
-A typical bible touches 10–25 pages. Fill the bible page's "Pages from this bible" list with links to all of them.
+A typical source touches 10–25 pages. Fill the source page's "Pages from this source" list with links to all of them.
 
 ## Step 6 — Bookkeeping + read-only proof
 
@@ -95,18 +95,18 @@ A typical bible touches 10–25 pages. Fill the bible page's "Pages from this bi
 - Bump `updated:` frontmatter to today on every page you touched.
 - Append EXACTLY one line to `/Users/noahraford/magic/wiki/log.md`:
   ```
-  YYYY-MM-DD HH:MM | ingest | <bible-slug> | sha256:<12-hex> | created:<n> updated:<n>
+  YYYY-MM-DD HH:MM | ingest | <source-slug> | sha256:<12-hex> | created:<n> updated:<n>
   ```
-- Prove read-only: `find /Users/noahraford/magic/X_Deeper_research -newer /tmp/wb-marker -type f ! -name '.DS_Store'` must be empty. If it is not, something wrote to the bibles — stop and report.
-- Commit the wiki: `cd /Users/noahraford/magic/wiki && git add -A && git commit -m "ingest: <bible-slug>"` (if the repo exists).
+- Prove read-only: `find /Users/noahraford/magic/X_Deeper_research -newer /tmp/wb-marker -type f ! -name '.DS_Store'` must be empty. If it is not, something wrote to the literature — stop and report.
+- Commit the wiki: `cd /Users/noahraford/magic/wiki && git add -A && git commit -m "ingest: <source-slug>"` (if the repo exists).
 
 ## `--all`
 
-Enumerate candidate dirs (zsh-safe), then test each against Step 0's three qualification commands, ingest matches sequentially (skipping already-ingested), and print a one-line status per dir with its skip reason (`already-ingested | superseded | locked | not-a-bible`):
+Enumerate candidate dirs (zsh-safe), then test each against Step 0's three qualification commands, ingest matches sequentially (skipping already-ingested), and print a one-line status per dir with its skip reason (`already-ingested | superseded | locked | not-a-source`):
 
 ```bash
 find /Users/noahraford/magic/X_Deeper_research -mindepth 2 -maxdepth 2 -type d -name 'ch*-q*' \
   | grep -viE '(superseded|-[0-9]{8}t[0-9]+z$)' | sort
 ```
 
-(The `-name 'ch*-q*'` filter enforces spec §4.1.7's chapter exclusions — `0_Research Guide`, `Process`, and dot-dirs hold no `ch*-q*` children, so they never appear. The `grep -viE` drops `superseded`/timestamped variants; the Step-0 tests drop non-bibles; the lock check drops locked ones.)
+(The `-name 'ch*-q*'` filter enforces spec §4.1.7's chapter exclusions — `0_Research Guide`, `Process`, and dot-dirs hold no `ch*-q*` children, so they never appear. The `grep -viE` drops `superseded`/timestamped variants; the Step-0 tests drop non-sources; the lock check drops locked ones.)

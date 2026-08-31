@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build the wiki atlas: one self-contained, bible-styled wiki.html from the
+"""Build the wiki atlas: one self-contained, styled wiki.html from the
 research wiki (markdown pages) + graphify graph.json.
 
-A reading pane (bible style) + an interactive, collapsible, community-colored
+A reading pane (styled) + an interactive, collapsible, community-colored
 SVG graph navigator with metadata nodes/edges excluded. See
 docs/superpowers/specs/2026-08-30-wiki-atlas-html-design.md.
 """
@@ -18,7 +18,7 @@ from collections import Counter
 import markdown
 
 WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
-PAGE_DIRS = ("bibles", "concepts", "thinkers", "debates", "themes", "answers")
+PAGE_DIRS = ("literature", "concepts", "thinkers", "debates", "themes", "answers")
 
 # ---------------------------------------------------------------- parsing ----
 
@@ -70,24 +70,24 @@ def load_pages(wiki_dir, node_labels):
                 continue
             with open(p, encoding="utf-8") as fh:
                 fm, body = parse_frontmatter(fh.read())
-            if d == "bibles":
-                # drop the scaffolding "method note" line — bibles read as clean
+            if d == "literature":
+                # drop the scaffolding "method note" line — sources read as clean
                 # research-question landing pages, not lab notes
                 body = re.sub(r'(?m)^\*\*Method note:\*\*.*\n?', '', body)
             slug = fm.get("slug") or base[:-3]
             key = f"{d}/{slug}"
-            bibles = fm.get("bibles") or []
-            if isinstance(bibles, str):
-                bibles = [b.strip() for b in bibles.strip("[]").split(",") if b.strip()]
+            literature = fm.get("literature") or []
+            if isinstance(literature, str):
+                literature = [b.strip() for b in literature.strip("[]").split(",") if b.strip()]
             pages[key] = {
                 "title": resolve_title(fm, body, node_labels.get(key), slug),
                 "type": d[:-1] if d.endswith("s") else d,
                 "slug": slug,
                 "overview": bool(fm.get("overview")),  # has an integrated narrative lead
-                "sources": fm.get("sources") or {},    # {bible-slug: section-anchor} deep-links
+                "sources": fm.get("sources") or {},    # {source-slug: section-anchor} deep-links
                 "file": f"{d}/{base[:-3]}",  # filename stem, for graph node mapping
                 "status": fm.get("status", ""),
-                "bibles": bibles,
+                "literature": literature,
                 "body": body,
             }
     return pages
@@ -274,7 +274,7 @@ def provenance(pages, wiki_dir):
         if stamps:
             last = max(stamps)
     return {
-        "bibles": counts.get("bible", 0), "concepts": counts.get("concept", 0),
+        "literature": counts.get("literature", 0), "concepts": counts.get("concept", 0),
         "thinkers": counts.get("thinker", 0), "debates": counts.get("debate", 0),
         "themes": counts.get("theme", 0), "answers": counts.get("answer", 0),
         "last_analysis": last,
@@ -299,7 +299,7 @@ PALETTE = ["#1e6154", "#9b4a2f", "#3a5a8c", "#7a5c99", "#3f7d4e", "#a8842a",
 ATLAS_TITLE = "Other Minds"
 ATLAS_KICKER = "A research atlas"
 
-BIBLE_CSS = """
+READER_CSS = """
 :root{color-scheme:light dark;--paper:#f3f0e8;--paper-raised:#faf8f2;--ink:#181a18;
 --muted:#666a62;--line:#c9c5b9;--accent:#1e6154;--accent-soft:#dce8e1;
 --warning:#9b4a2f;--serif:Georgia,"Times New Roman",serif;
@@ -438,7 +438,7 @@ def _svg(graph):
 def _index_html(pages):
     """Grouped, alphabetized, browsable list of every entry."""
     order = [("theme", "Themes"), ("debate", "Debates"), ("concept", "Concepts"),
-             ("thinker", "Thinkers"), ("bible", "Bibles"), ("answer", "Answers")]
+             ("thinker", "Thinkers"), ("literature", "Literature"), ("answer", "Answers")]
     parts = []
     for typ, label in order:
         items = sorted(((k, p["title"]) for k, p in pages.items() if p["type"] == typ),
@@ -457,7 +457,7 @@ def _front_door_html(about_html, front, unresolved_html, prov):
     if about_html:
         parts.append(f'<div class="lead">{about_html}</div>')
     else:
-        parts.append(f'<p class="lead">A research wiki over {prov["bibles"]} source bibles — '
+        parts.append(f'<p class="lead">A research wiki over {prov["literature"]} source documents — '
                      f'{prov["concepts"]} concepts, {prov["thinkers"]} thinkers, '
                      f'{prov["debates"]} debates, {prov["themes"]} themes.</p>')
     if front["themes"]:
@@ -516,7 +516,7 @@ def _about_taglines(wiki, prov):
                 blurb = (t[:220].rsplit(' ', 1)[0] + '…') if len(t) > 220 else t
                 break
     if not blurb:
-        blurb = (f'A research wiki over {prov["bibles"]} source documents — '
+        blurb = (f'A research wiki over {prov["literature"]} source documents — '
                  f'{prov["concepts"]} concepts, {prov["thinkers"]} thinkers, '
                  f'{prov["debates"]} debates, {prov["themes"]} themes.')
     return subtitle, blurb
@@ -577,7 +577,7 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
     types = sorted({n["type"] for n in graph["nodes"]})
     typefilter = "".join(f'<button data-type="{t}">{t}</button>' for t in types)
     prov_line = " · ".join([
-        f'{prov["bibles"]} bibles', f'{prov["concepts"]} concepts',
+        f'{prov["literature"]} sources', f'{prov["concepts"]} concepts',
         f'{prov["thinkers"]} thinkers', f'{prov["debates"]} debates',
         f'{prov["themes"]} themes', f'{prov["answers"]} answers']
         + ([f'updated {prov["last_analysis"]}'] if prov["last_analysis"] else []))
@@ -593,7 +593,7 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark"><title>{_html.escape(ATLAS_TITLE)}</title>
-<style>{BIBLE_CSS}{ATLAS_CSS}</style></head><body>
+<style>{READER_CSS}{ATLAS_CSS}</style></head><body>
 <header class="masthead">
   <div><span class="brand">{_html.escape(ATLAS_KICKER)}</span> <h1>{_html.escape(ATLAS_TITLE)}</h1></div>
   <p class="prov">{prov_line}</p>
@@ -655,10 +655,10 @@ function renderPage(key){
   setActive(key); reader.scrollTop=0;
   if(typeof mobileShow==='function' && isMobile()) mobileShow('read');
 }
-// bible entries open the full bundled research bible (new tab); everything else
+// literature entries open the full bundled research document (new tab); everything else
 // renders in the reader
 function openEntry(key, anchor){
-  if(key.indexOf('bibles/')===0){ window.open('bibles-html/'+key.slice(7)+'.html'+(anchor?('#'+anchor):''),'_blank'); }
+  if(key.indexOf('literature/')===0){ window.open('literature-html/'+key.slice(11)+'.html'+(anchor?('#'+anchor):''),'_blank'); }
   else { renderPage(key); }
 }
 // one delegated listener handles every internal link (reader, index, search, clusters)
@@ -856,8 +856,8 @@ def validate(pages, graph, html):
 # ------------------------------------------------------------- build ---------
 
 def _load_anchor_heading(wiki):
-    """{bible-slug: {anchor: heading}} from the corpus anchors.json (for labels)."""
-    p = os.path.join(wiki, ".bibles-text", "anchors.json")
+    """{source-slug: {anchor: heading}} from the corpus anchors.json (for labels)."""
+    p = os.path.join(wiki, ".literature-text", "anchors.json")
     out = {}
     if os.path.exists(p):
         data = json.load(open(p, encoding="utf-8"))
@@ -873,21 +873,21 @@ def _load_anchor_heading(wiki):
 
 
 def _sources_html(page, anchor_heading):
-    """Anchored deep-links into the bibles: each source opens the bible scrolled
+    """Anchored deep-links into the literature: each source opens the document scrolled
     to the section the concept draws on (via page['sources']), falling back to the
-    whole bible when no anchor is known."""
+    whole document when no anchor is known."""
     items = []
-    for b in page["bibles"]:
+    for b in page["literature"]:
         anc = page.get("sources", {}).get(b)
         if anc:
             head = anchor_heading.get(b, {}).get(anc, "")
             label = f"{b} § {head}" if head else b
-            items.append(f'<a class="wikilink" data-page="bibles/{b}" data-anchor="{_html.escape(anc, quote=True)}">{_html.escape(label)}</a>')
+            items.append(f'<a class="wikilink" data-page="literature/{b}" data-anchor="{_html.escape(anc, quote=True)}">{_html.escape(label)}</a>')
         else:
-            items.append(f'<a class="wikilink" data-page="bibles/{b}">{_html.escape(b)}</a>')
+            items.append(f'<a class="wikilink" data-page="literature/{b}">{_html.escape(b)}</a>')
     if not items:
         return ""
-    return '<h2>Sources</h2><p>Drawn from the research bibles: ' + " · ".join(items) + '.</p>'
+    return '<h2>Sources</h2><p>Drawn from the literature: ' + " · ".join(items) + '.</p>'
 
 
 def build_all(wiki, out, quiet=True):
@@ -900,12 +900,12 @@ def build_all(wiki, out, quiet=True):
     for p in pages.values():
         body = p["body"]
         if p["overview"]:
-            # the narrative already integrates the per-bible material, so drop the
-            # raw "## In <bible>" scaffolding sections from the reader view (they
+            # the narrative already integrates the per-source material, so drop the
+            # raw "## In <source>" scaffolding sections from the reader view (they
             # stay in the markdown for Obsidian + the ingest pipeline)
             body = re.sub(r'(?ms)^##\s+In\s+.*?(?=^##\s|\Z)', '', body)
         p["html"], p["links"], p["missing"] = md_to_html(body, pages)
-        if p["overview"] and p["bibles"]:
+        if p["overview"] and p["literature"]:
             p["html"] += _sources_html(p, anchor_heading)
     graph = load_graph(os.path.join(wiki, "graphify-out", "graph.json"), pages, log)
     # optional title backfill for the rare graph-label fallback

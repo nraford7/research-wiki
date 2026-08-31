@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Extract the bundled research bibles (HTML) into clean, section-chunked
-markdown for the bible-corpus RAG index.
+"""Extract the bundled research sources (HTML) into clean, section-chunked
+markdown for the literature-corpus RAG index.
 
-Reads wiki/bibles-html/<slug>.html (already copied from the read-only sources),
-writes wiki/.bibles-text/<slug>.md — headings preserved, reference apparatus
+Reads wiki/literature-html/<slug>.html (already copied from the read-only sources),
+writes wiki/.literature-text/<slug>.md — headings preserved, reference apparatus
 (bibliographies / citation indexes) dropped, tables flattened to pipe rows.
 See docs/superpowers/specs/2026-08-30-bible-corpus-rag-design.md.
 """
@@ -15,8 +15,8 @@ import re
 
 from bs4 import BeautifulSoup
 
-HTML_DIR = "/Users/noahraford/magic/wiki/bibles-html"
-OUT_DIR = "/Users/noahraford/magic/wiki/.bibles-text"
+HTML_DIR = "/Users/noahraford/magic/wiki/literature-html"
+OUT_DIR = "/Users/noahraford/magic/wiki/.literature-text"
 
 # Apparatus headings: anchored at start (so "Sources (this section)" drops but
 # the analytical "Internal tension the sources flag" does NOT), plus the
@@ -96,15 +96,15 @@ def html_to_markdown(html):
     return md
 
 
-# --- section anchors (for concept→bible-section deep-linking) --------------
+# --- section anchors (for concept→source-section deep-linking) --------------
 
-# Coarse bibles whose bundled HTML has headings but no section ids.
+# Coarse sources whose bundled HTML has headings but no section ids.
 COARSE = ("ch1-q1-non-western-AI", "ch1-q2-extended-cognition",
           "ch1-q6-western-philosophy-of-mind")
 
 
 def slugify(text):
-    """Match the bibles' own anchor scheme: 'section-' + lower, non-alnum runs -> '-'."""
+    """Match the sources' own anchor scheme: 'section-' + lower, non-alnum runs -> '-'."""
     return "section-" + re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
@@ -121,11 +121,11 @@ def heading_anchor(el):
 
 
 def resection_html(html):
-    """Inject id='section-<slug>' on h2/h3 that lack one (for coarse bibles).
+    """Inject id='section-<slug>' on h2/h3 that lack one (for coarse sources).
     Idempotent — preserves existing ids."""
     soup = BeautifulSoup(html, "html.parser")
-    # h2/h3/h4: coarse bibles have very broad h2s and few <section> wrappers, so
-    # finer headings must carry their own ids (else they inherit the top-of-bible id)
+    # h2/h3/h4: coarse sources have very broad h2s and few <section> wrappers, so
+    # finer headings must carry their own ids (else they inherit the top-of-document id)
     for el in soup.find_all(["h2", "h3", "h4"]):
         if not el.get("id"):
             txt = el.get_text(" ", strip=True)
@@ -149,7 +149,7 @@ def extract_anchors(html):
 
 
 def resection_coarse(html_dir):
-    """Rewrite the coarse bibles' bundled HTML in place, adding section ids."""
+    """Rewrite the coarse sources' bundled HTML in place, adding section ids."""
     for slug in COARSE:
         p = os.path.join(html_dir, slug + ".html")
         if os.path.exists(p):
@@ -165,7 +165,7 @@ def extract_all(html_dir, out_dir):
         html = open(p, encoding="utf-8").read()
         md = html_to_markdown(html)
         with open(os.path.join(out_dir, slug + ".md"), "w", encoding="utf-8") as fh:
-            fh.write(f"<!-- source: bibles-html/{slug}.html -->\n\n# {slug}\n\n" + md + "\n")
+            fh.write(f"<!-- source: literature-html/{slug}.html -->\n\n# {slug}\n\n" + md + "\n")
         anchors[slug] = extract_anchors(html)
         n += 1
     with open(os.path.join(out_dir, "anchors.json"), "w", encoding="utf-8") as fh:
@@ -174,17 +174,17 @@ def extract_all(html_dir, out_dir):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Extract bibles to section-chunked markdown.")
+    ap = argparse.ArgumentParser(description="Extract sources to section-chunked markdown.")
     ap.add_argument("--html-dir", default=HTML_DIR)
     ap.add_argument("--out", default=OUT_DIR)
     ap.add_argument("--resection", action="store_true",
-                    help="inject section ids into the coarse bibles' bundled HTML first")
+                    help="inject section ids into the coarse sources' bundled HTML first")
     a = ap.parse_args(argv)
     if a.resection:
         resection_coarse(a.html_dir)
-        print(f"[extract-bibles] re-sectioned coarse bibles in {a.html_dir}")
+        print(f"[extract-sources] re-sectioned coarse sources in {a.html_dir}")
     n = extract_all(a.html_dir, a.out)
-    print(f"[extract-bibles] wrote {n} bibles + anchors.json to {a.out}")
+    print(f"[extract-sources] wrote {n} sources + anchors.json to {a.out}")
     return 0
 
 
