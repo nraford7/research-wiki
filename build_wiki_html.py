@@ -953,18 +953,47 @@ def _cluster_structure(graph):
 
 
 def _load_cluster_narratives(wiki, pages):
-    """Hand/LLM-written prose bodies from wiki/clusters/*.md, keyed by community id.
-    Prose is preserved across graphify re-runs; the member list is regenerated."""
-    out = {}
+    """Hand/LLM-written prose bodies from wiki/clusters/*.md, returned as a LIST.
+
+    Deliberately NOT keyed by the frontmatter `community:` integer: graphify
+    renumbers communities on every run, so that id goes stale and would attach an
+    essay to the wrong current cluster. Instead each narrative carries the set of
+    member pages it wikilinks to, and `_match_narratives_to_communities` re-attaches
+    it to whatever current community its content actually overlaps. The leading H1 is
+    stripped (build_cluster_pages prepends the authoritative graphify label as the
+    heading, so the reader title always matches the legend)."""
+    out = []
     for p in sorted(glob.glob(os.path.join(wiki, "clusters", "*.md"))):
         with open(p, encoding="utf-8") as fh:
             fm, body = parse_frontmatter(fh.read())
-        cid = fm.get("community")
-        if cid is None:
-            continue
-        out[int(cid)] = {"title": fm.get("title", ""),
-                         "html": md_to_html(body, pages)[0]}
+        links = set(WIKILINK.findall(body))
+        body = re.sub(r'^#\s+.+$', '', body, count=1, flags=re.M)  # drop dup H1
+        out.append({"title": fm.get("title", ""), "links": links,
+                    "html": md_to_html(body, pages)[0]})
     return out
+
+
+def _match_narratives_to_communities(narratives, members):
+    """Attach each stale-numbered narrative to the CURRENT community whose members it
+    most overlaps (by wikilinked pages). Greedy by overlap; each community and each
+    narrative used at most once; a narrative overlapping nothing is dropped (an
+    unadorned member list beats the wrong essay). Returns {cid: narrative}."""
+    member_keys = {cid: {m["key"] for m in mems} for cid, mems in members.items()}
+    cand = []  # (overlap, narrative_index, cid)
+    for i, n in enumerate(narratives):
+        for cid, keys in member_keys.items():
+            ov = len(n["links"] & keys)
+            if ov:
+                cand.append((ov, i, cid))
+    cand.sort(reverse=True)  # strongest overlap wins ties for a community
+    used_narr, used_cid, by_cid = set(), set(), {}
+    for ov, i, cid in cand:
+        if i in used_narr or cid in used_cid:
+            continue
+        by_cid[cid] = narratives[i]
+        used_narr.add(i)
+        used_cid.add(cid)
+    return by_cid
 
 
 def build_cluster_pages(wiki, pages, graph, labels):
@@ -972,7 +1001,7 @@ def build_cluster_pages(wiki, pages, graph, labels):
     related clusters. NOT graph nodes — a lens over the graph, reachable from the
     legend/chips. Returned in payload shape to merge into PAGES."""
     members, related = _cluster_structure(graph)
-    narr = _load_cluster_narratives(wiki, pages)
+    narr = _match_narratives_to_communities(_load_cluster_narratives(wiki, pages), members)
 
     def clabel(cid):
         return labels.get(cid) or narr.get(cid, {}).get("title") or f"Community {cid}"
@@ -980,7 +1009,9 @@ def build_cluster_pages(wiki, pages, graph, labels):
     payload = {}
     CAP = 30  # big clusters list only their most-connected members
     for cid, mems in members.items():
-        parts = [narr.get(cid, {}).get("html", "")]
+        # authoritative heading = the current graphify label, so the reader title
+        # always matches the legend swatch; the matched narrative prose follows.
+        parts = [f'<h1>{_html.escape(clabel(cid))}</h1>', narr.get(cid, {}).get("html", "")]
         total = len(mems)
         shown = mems[:CAP]  # mems already sorted by degree desc
         by_type = {}
