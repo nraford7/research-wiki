@@ -377,6 +377,9 @@ ATLAS_CSS = """
 .reader{overflow:auto;padding:40px clamp(24px,5vw,72px) 100px;}
 .reader .doc{max-width:760px;margin:0 auto;}
 .reader .kicker{font:700 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
+.reader .doc-actions{margin:0 0 20px;}
+.reader .read-full{display:inline-block;font:700 .68rem var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--paper);background:var(--accent);border:1px solid var(--accent);padding:7px 13px;border-radius:3px;text-decoration:none;}
+.reader .read-full:hover{opacity:.85;}
 .front .lead{font-size:1.12rem;}
 .front h1{font:500 clamp(2.4rem,5vw,3.6rem)/1 var(--serif);letter-spacing:-.03em;margin:.1em 0 .5em;}
 .front .cards a,.front .qlist a{text-decoration:none;}
@@ -472,7 +475,9 @@ def _front_door_html(about_html, front, unresolved_html, prov):
             parts.append(f'<li><a class="wikilink" data-page="{k}">{_html.escape(t)}</a></li>')
         parts.append('</ul>')
     if front["clusters"]:
-        parts.append('<h2>Topic clusters</h2><p>')
+        parts.append('<h2>Topic clusters</h2>'
+                     '<p class="cluster-hint">Click a cluster to read what it is about — '
+                     'its members and neighbouring topics — and light it up on the graph.</p><p>')
         chips = []
         for cid, label in front["clusters"]:
             color = PALETTE[cid % len(PALETTE)]
@@ -562,13 +567,17 @@ __LOGIN_ERROR__
 </main></body></html>"""
 
 
-def render(pages, graph, about_html, unresolved_html, front, prov, community_labels):
+def render(pages, graph, about_html, unresolved_html, front, prov, community_labels,
+           cluster_pages=None):
     front_door = _front_door_html(about_html, front, unresolved_html, prov)
     # PAGES payload for client navigation
     payload = {k: {"title": p["title"], "type": p["type"],
                    "status": _html.escape(str(p["status"])),
                    "html": p["html"], "text": re.sub(r'<[^>]+>', ' ', p["html"])[:4000]}
                for k, p in pages.items()}
+    # cluster pages are reader-pane destinations, not graph nodes — merge into PAGES only
+    if cluster_pages:
+        payload.update(cluster_pages)
     legend = "".join(
         f'<div class="lg" data-community="{cid}"><span class="sw" '
         f'style="background:{PALETTE[cid % len(PALETTE)]}"></span>'
@@ -650,23 +659,42 @@ function showFront(){ reader.innerHTML = FRONT; setActive(null); reader.scrollTo
 function renderPage(key){
   const p = PAGES[key];
   if(!p){ return; }
-  reader.innerHTML = '<div class="doc"><p class="kicker">'+esc(p.type)+
-    (p.status?'<span class="status-chip">'+esc(p.status)+'</span>':'')+'</p>'+p.html+'</div>';
-  setActive(key); reader.scrollTop=0;
+  const isLit = key.indexOf('literature/')===0;
+  const isCluster = key.indexOf('clusters/')===0;
+  const kicker = isCluster ? 'topic cluster' : (isLit ? 'source document' : esc(p.type));
+  let head = '';
+  if(isLit){
+    const href = 'literature-html/'+key.slice(11)+'.html';
+    head = '<p class="doc-actions"><a class="read-full" href="'+href+'" target="_blank" rel="noopener">Read full document ↗</a></p>';
+  }
+  reader.innerHTML = '<div class="doc"><p class="kicker">'+kicker+
+    (p.status?'<span class="status-chip">'+esc(p.status)+'</span>':'')+'</p>'+head+p.html+'</div>';
+  reader.scrollTop=0;
+  // a cluster page is a lens, not a graph node: light up its community instead of selecting a node
+  if(isCluster){ highlightCommunity(+key.slice(9)); } else { setActive(key); }
   if(typeof mobileShow==='function' && isMobile()) mobileShow('read');
 }
-// literature entries open the full bundled research document (new tab); everything else
-// renders in the reader
+// clicking a cluster (legend swatch, front chip, or "related cluster" link) opens its
+// page in the reader AND highlights it on the graph
+function openCluster(cid){
+  setView('graph');
+  if(PAGES['clusters/'+cid]) renderPage('clusters/'+cid); else highlightCommunity(cid);
+}
+// A literature node now opens its source-hub page IN THE READER, like every other node.
+// Only an anchored deep-link (a concept's "Sources" line) jumps into the full bundled
+// document in a new tab, scrolled to the cited section; the hub page's own
+// "Read full document" button covers the whole-document case.
 function openEntry(key, anchor){
-  if(key.indexOf('literature/')===0){ window.open('literature-html/'+key.slice(11)+'.html'+(anchor?('#'+anchor):''),'_blank'); }
-  else { renderPage(key); }
+  if(key.indexOf('literature/')===0 && anchor){
+    window.open('literature-html/'+key.slice(11)+'.html#'+anchor,'_blank');
+  } else { renderPage(key); }
 }
 // one delegated listener handles every internal link (reader, index, search, clusters)
 document.addEventListener('click', e=>{
   const p = e.target.closest('a[data-page]');
   if(p){ e.preventDefault(); openEntry(p.dataset.page, p.dataset.anchor); return; }
   const c = e.target.closest('a[data-community]');
-  if(c){ e.preventDefault(); setView('graph'); highlightCommunity(+c.dataset.community); }
+  if(c){ e.preventDefault(); openCluster(+c.dataset.community); }
 });
 // ---- graph selection, neighbour highlight, labels, cluster titles ----
 const svgNS='http://www.w3.org/2000/svg';
@@ -730,7 +758,7 @@ circles.forEach(c=>{
     tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; });
   c.addEventListener('mouseleave',()=>{ tip.style.opacity=0; });
 });
-document.querySelectorAll('.legend .lg').forEach(l=>l.addEventListener('click',()=>highlightCommunity(+l.dataset.community)));
+document.querySelectorAll('.legend .lg').forEach(l=>l.addEventListener('click',()=>openCluster(+l.dataset.community)));
 // topic chips: default shows ALL; first click isolates that type; extra clicks
 // add types back in; clicking an active type removes it (empty -> back to all)
 let activeTypes=null; // null = all types shown
@@ -819,7 +847,7 @@ showFront();
 
 # ------------------------------------------------------------- validate ------
 
-def validate(pages, graph, html):
+def validate(pages, graph, html, extra_pages=0):
     problems = []
     if not html or len(html) < 1000:
         problems.append("output HTML is empty or too small")
@@ -828,7 +856,7 @@ def validate(pages, graph, html):
         problems.append("PAGES payload missing")
     else:
         try:
-            if len(json.loads(m.group(1))) != len(pages):
+            if len(json.loads(m.group(1))) != len(pages) + extra_pages:
                 problems.append("embedded PAGES count != parsed pages count")
         except json.JSONDecodeError:
             problems.append("PAGES payload does not parse (script-tag breakout?)")
@@ -890,6 +918,90 @@ def _sources_html(page, anchor_heading):
     return '<h2>Sources</h2><p>Drawn from the literature: ' + " · ".join(items) + '.</p>'
 
 
+# graph node types are the directory names (plural), e.g. key.split("/")[0]
+CLUSTER_TYPE_ORDER = [("literature", "Sources"), ("concepts", "Concepts"),
+                      ("thinkers", "Thinkers"), ("debates", "Debates"),
+                      ("themes", "Themes"), ("answers", "Answers")]
+
+
+def _cluster_structure(graph):
+    """Per-community member lists (sorted by degree desc) + top related communities.
+    Derived from the graph itself so membership always matches what the graph shows."""
+    deg = Counter()
+    for e in graph["edges"]:
+        deg[e["s"]] += 1
+        deg[e["t"]] += 1
+    id2comm = {n["id"]: n["community"] for n in graph["nodes"]}
+    members = {}
+    for n in graph["nodes"]:
+        members.setdefault(n["community"], []).append(
+            {"key": n["key"], "label": n["label"], "type": n["type"],
+             "deg": deg.get(n["id"], 0)})
+    for cid in members:
+        members[cid].sort(key=lambda m: (-m["deg"], m["label"].lower()))
+    cross = {}
+    for e in graph["edges"]:
+        ca, cb = id2comm.get(e["s"]), id2comm.get(e["t"])
+        if ca is None or cb is None or ca == cb:
+            continue
+        cross.setdefault(ca, Counter())[cb] += 1
+        cross.setdefault(cb, Counter())[ca] += 1
+    related = {cid: [c for c, _ in cross.get(cid, Counter()).most_common(3)]
+               for cid in members}
+    return members, related
+
+
+def _load_cluster_narratives(wiki, pages):
+    """Hand/LLM-written prose bodies from wiki/clusters/*.md, keyed by community id.
+    Prose is preserved across graphify re-runs; the member list is regenerated."""
+    out = {}
+    for p in sorted(glob.glob(os.path.join(wiki, "clusters", "*.md"))):
+        with open(p, encoding="utf-8") as fh:
+            fm, body = parse_frontmatter(fh.read())
+        cid = fm.get("community")
+        if cid is None:
+            continue
+        out[int(cid)] = {"title": fm.get("title", ""),
+                         "html": md_to_html(body, pages)[0]}
+    return out
+
+
+def build_cluster_pages(wiki, pages, graph, labels):
+    """Reader-pane pages for each topic cluster: narrative + linked member list +
+    related clusters. NOT graph nodes — a lens over the graph, reachable from the
+    legend/chips. Returned in payload shape to merge into PAGES."""
+    members, related = _cluster_structure(graph)
+    narr = _load_cluster_narratives(wiki, pages)
+
+    def clabel(cid):
+        return labels.get(cid) or narr.get(cid, {}).get("title") or f"Community {cid}"
+
+    payload = {}
+    for cid, mems in members.items():
+        parts = [narr.get(cid, {}).get("html", "")]
+        by_type = {}
+        for m in mems:
+            by_type.setdefault(m["type"], []).append(m)
+        parts.append('<h2>In this cluster</h2>')
+        for typ, tlabel in CLUSTER_TYPE_ORDER:
+            if typ in by_type:
+                parts.append(f'<h3>{tlabel} ({len(by_type[typ])})</h3><ul>')
+                parts.extend(
+                    f'<li><a class="wikilink" data-page="{m["key"]}">'
+                    f'{_html.escape(m["label"])}</a></li>' for m in by_type[typ])
+                parts.append('</ul>')
+        rel = related.get(cid, [])
+        if rel:
+            links = " · ".join(f'<a class="cluster-link" data-community="{rc}">'
+                               f'{_html.escape(clabel(rc))}</a>' for rc in rel)
+            parts.append(f'<h2>Related clusters</h2><p>{links}</p>')
+        html = "".join(parts)
+        payload[f"clusters/{cid}"] = {
+            "title": clabel(cid), "type": "cluster", "status": "",
+            "html": html, "text": re.sub(r'<[^>]+>', ' ', html)[:4000]}
+    return payload
+
+
 def build_all(wiki, out, quiet=True):
     def log(*a):
         if not quiet:
@@ -919,7 +1031,9 @@ def build_all(wiki, out, quiet=True):
     unresolved_html = md_to_html(read_unresolved(wiki), pages)[0]
     prov = provenance(pages, wiki)
     front = front_sections(pages, graph, labels)
-    html = render(pages, graph, about_html, unresolved_html, front, prov, labels)
+    cluster_pages = build_cluster_pages(wiki, pages, graph, labels)
+    html = render(pages, graph, about_html, unresolved_html, front, prov, labels,
+                  cluster_pages)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(html)
     # public landing/gate page beside the atlas; the deploy server serves it at "/"
@@ -928,7 +1042,7 @@ def build_all(wiki, out, quiet=True):
     with open(os.path.join(wiki, "landing.html"), "w", encoding="utf-8") as fh:
         fh.write(_landing_html(ATLAS_TITLE, ATLAS_KICKER, subtitle, blurb))
     missing_total = sum(len(p.get("missing", [])) for p in pages.values())
-    problems = validate(pages, graph, html)
+    problems = validate(pages, graph, html, extra_pages=len(cluster_pages))
     if missing_total:
         log(f"note: {missing_total} unresolved wikilink(s) rendered as inert text")
     return problems

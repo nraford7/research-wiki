@@ -31,6 +31,15 @@ updated: YYYY-MM-DD
 **Core question:** <the source's driving question, one sentence>
 **Method note:** <corpus size, rounds, source counts — from the source's own method note>
 
+## Overview
+<2–4 short paragraphs of narrative synthesis. ORDER MATTERS: FIRST introduce and explain
+the core idea(s) the source is about — what they are, in plain terms, and how they work —
+so a reader who knew nothing walks away understanding the substance. ONLY THEN turn to the
+debate: the competing positions, disagreements, and open questions. Explanation before
+controversy; never lead with the debate. Grounded in the Position map and the source's own
+text — not model priors. This is what makes the source page teach the ideas like the
+enriched concept pages, rather than read as a bare index of who-disagrees-with-whom.>
+
 ## Position map
 <The source's enumerated positions/answers, one line each, with lead thinker + key citation.>
 
@@ -38,8 +47,17 @@ updated: YYYY-MM-DD
 <10–20 sources by tier: - [Surname, YYYY] — title (tier N)>
 
 ## Pages from this source
-- [[concepts/<slug>]] · [[thinkers/<slug>]] · ...
+**Concepts**
+- [[concepts/<slug>]]
+- ...
+
+**Thinkers**
+- [[thinkers/<slug>]]
+- ...
 ```
+
+"Pages from this source": one link per bullet, grouped by kind (Concepts, then Thinkers,
+then Debates/Themes/Answers if present) — never a dot-joined inline run.
 
 ## Body template — concept AND thinker
 
