@@ -6,11 +6,11 @@ Cluster notes are the atlas's front-door prose. They regress in three ways that 
 legend==heading check does NOT catch, so this validates them directly and exits
 non-zero on any failure (run it in analyze.md `--full` before build_wiki_html.py):
 
-  1. PIPE links `[[type/slug|alias]]` — the atlas WIKILINK regex is `[[type/slug]]`
-     only, so piped links render as raw dead text.
-  2. DEAD links — `[[type/slug]]` whose page does not exist (renders as a
-     wikilink-missing span).
-  3. DOUBLING — `Name ([[thinkers/slug]])`, which renders "Name (Name)".
+  1. DEAD links — `[[type/slug]]` (or `[[type/slug|alias]]`) whose page does not
+     exist (renders as a wikilink-missing span). Alias display text is fine; the SLUG
+     must resolve.
+  2. DOUBLING — `Name ([[thinkers/slug]])`, which renders "Name (Name)"; use
+     `[[thinkers/slug|Name]]` instead.
   Plus: too-thin notes (word count) and notes that do not link enough of their own
   community's members to bind correctly (the atlas attaches a note to the community
   its links most overlap).
@@ -51,9 +51,9 @@ def main():
         body = re.sub(r"^---\n.*?\n---\n", "", raw, count=1, flags=re.S)
         body = re.sub(r"^#\s+.+$", "", body, count=1, flags=re.M)
         wc = len(body.split())
-        links = [k.strip() for k in LINK.findall(body)]
+        # slug only — the atlas supports [[type/slug|alias]]; alias is display text
+        links = [k.strip().split("|", 1)[0].strip() for k in LINK.findall(body)]
         dead = sorted({k for k in links if k not in existing})
-        pipes = PIPE.findall(body)
         doubles = DOUBLE.findall(body)
         cm = FM_COMMUNITY.search(raw)
         cid = int(cm.group(1)) if cm else None
@@ -62,7 +62,6 @@ def main():
         best = max(ov, key=ov.get) if ov else None
         fl = []
         if wc < a.min_words: fl.append(f"SHORT({wc})")
-        if pipes: fl.append(f"PIPE({len(pipes)})")
         if dead: fl.append(f"DEAD={dead}")
         if doubles: fl.append(f"DOUBLING({len(doubles)})")
         if cid is not None and own < a.min_own: fl.append(f"OWN-MEMBER-LINKS({own})")

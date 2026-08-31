@@ -95,7 +95,7 @@ def load_pages(wiki_dir, node_labels):
 
 # ----------------------------------------------------- markdown -> html ------
 
-WIKILINK = re.compile(r'\[\[([a-z]+/[A-Za-z0-9_-]+)\]\]')
+WIKILINK = re.compile(r'\[\[([a-z]+/[A-Za-z0-9_-]+)(?:\|([^\]]+))?\]\]')  # optional |alias (Obsidian-readable)
 CITE = re.compile(
     r'\[([A-Z][^\]\[]*?,\s*\d{4}[a-z]?(?:;[^\]\[]*?\d{4}[a-z]?)*'
     r'(?:,\s*(?:ch\.|p\.|pp\.)[^\]\[]*)?)\]'
@@ -107,12 +107,13 @@ def md_to_html(body, pages):
 
     def wl(m):
         key = m.group(1)
+        alias = m.group(2)  # Obsidian [[type/slug|alias]] display text, if given
         links.append(key)
         t = pages.get(key, {}).get("title")
         if t is None:
             missing.append(key)
-            return f'<span class="wikilink-missing">{_html.escape(key)}</span>'
-        return f'<a class="wikilink" data-page="{key}">{_html.escape(t)}</a>'
+            return f'<span class="wikilink-missing">{_html.escape(alias or key)}</span>'
+        return f'<a class="wikilink" data-page="{key}">{_html.escape(alias or t)}</a>'
 
     tmp = WIKILINK.sub(wl, body)
     tmp = CITE.sub(lambda m: f'<cite class="cite">[{m.group(1)}]</cite>', tmp)
@@ -256,7 +257,7 @@ def _hook(body):
     for line in txt.splitlines():
         line = line.strip()
         if line and not line.startswith(('#', '|', '-', '*', '>')):
-            line = WIKILINK.sub(lambda m: m.group(1).split('/')[-1], line)
+            line = WIKILINK.sub(lambda m: m.group(2) or m.group(1).split('/')[-1], line)
             line = re.sub(r'[\*_`]', '', line)
             s = re.split(r'(?<=[.?!])\s', line)[0]
             return (s[:180] + '…') if len(s) > 180 else s
@@ -966,7 +967,7 @@ def _load_cluster_narratives(wiki, pages):
     for p in sorted(glob.glob(os.path.join(wiki, "clusters", "*.md"))):
         with open(p, encoding="utf-8") as fh:
             fm, body = parse_frontmatter(fh.read())
-        links = set(WIKILINK.findall(body))
+        links = {m[0] for m in WIKILINK.findall(body)}  # slug only (ignore |alias)
         body = re.sub(r'^#\s+.+$', '', body, count=1, flags=re.M)  # drop dup H1
         out.append({"title": fm.get("title", ""), "links": links,
                     "html": md_to_html(body, pages)[0]})

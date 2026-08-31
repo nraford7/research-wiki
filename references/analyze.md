@@ -202,12 +202,12 @@ must run here:
   2. **Fan out one drafting agent per community** (read-only; writes only to
      `/tmp/cluster_out/<NN>.md`). Each writes a **~700-word** standalone essay (match the
      concept/thinker v2 depth — NOT a 2-sentence stub) that links **only exact keys from its
-     brief**, in **plain `[[type/slug]]` form**. NON-NEGOTIABLE link rules (the atlas WIKILINK
-     regex is `[[type/slug]]` only):
-       - **No pipe/alias** `[[x|y]]` — renders as raw dead text.
-       - **No `Name ([[thinkers/slug]])` doubling** — renders "Name (Name)"; link the name
-         inline (`[[thinkers/slug]]` alone renders the title) or name it in prose.
-       - Only slugs from the brief (they are guaranteed to exist).
+     brief**. NON-NEGOTIABLE link rules:
+       - The **slug must be an exact key from the brief** (guaranteed to exist). The atlas
+         renders both `[[type/slug]]` (shows the page title) and `[[type/slug|alias]]` (shows
+         the alias) — the Obsidian-readable alias form is preferred for clean display.
+       - **No `Name ([[thinkers/slug]])` doubling** — renders "Name (Name)"; write
+         `[[thinkers/slug|Name]]` instead, or name it in prose and link once.
      Prose only — no `# Title`, no `## ` sections, no frontmatter.
   3. **Write single-writer** — for each community write `wiki/clusters/<NN>-<labelslug>.md`
      with frontmatter (`type: cluster`, `community: <cid>`, `title: <graphify label>`,
@@ -216,7 +216,7 @@ must run here:
      just don't get a note.
   4. **VALIDATE — hard gate before the atlas build:**
      `python3 -B scripts/validate_cluster_notes.py --wiki <wiki>` (exit 0 required). It fails
-     on pipes, dead links, `Name ([[…]])` doubling, notes under ~600 words, too few
+     on dead links (slug not found, alias or not), `Name ([[…]])` doubling, notes under ~600 words, too few
      own-community member links, or a note that binds to the wrong community. Fix and re-run
      until it passes. Only then build the atlas.
 
