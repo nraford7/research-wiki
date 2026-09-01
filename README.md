@@ -103,11 +103,28 @@ Today's wiki holds 50 source documents: 655 concepts, 427 thinkers, 35 debates, 
 - **`scripts/enrich_splice.py`** — writes the narrative lead into each note.
 - **`scripts/build_cluster_briefs.py`** and **`scripts/validate_cluster_notes.py`** — build the cluster notes and check that every link resolves.
 - **`scripts/publish_source_html.py`** — copies each source's readable HTML into the wiki, and removes export junk.
+- **`export_obsidian.py`** — writes the wiki as Obsidian-native notes (title filenames, bare `[[Title]]` links) into a folder of your choosing.
 
 Run the tests:
 ```bash
 python3 -m pytest tests/ -q
 ```
+
+---
+
+## Export to Obsidian
+
+The wiki's links are path-qualified (`[[concepts/wu-wei]]`) because the atlas, the cluster checks, and the procedures all key on `type/slug`. Obsidian can open the wiki folder as it is, but its own idiom is one note per title and bare `[[Title]]` links. `export_obsidian.py` writes that form into a folder of your choosing, outside the wiki, and leaves the wiki untouched:
+
+```bash
+python3 -B export_obsidian.py --wiki /path/to/wiki --out ~/Vault/research-wiki
+```
+
+- It exports the literature, concept, thinker, debate, theme and answer pages, plus the cluster essays in `clusters/` as written (the atlas's generated member lists are not reproduced). `index.md`, `log.md`, `about.md` and `reports/` are the wiki's own apparatus and stay behind.
+- One note per page, named by its `title:`. When two pages share a title, the debate gets `(Debate)`, the theme `(Theme)`, the cluster `(Cluster)`, and any other clash gets the page's first literature slug. If that still clashes, the export stops and names the pages.
+- Every `[[type/slug]]` and `[[type/slug|alias]]` link becomes `[[Title]]` / `[[Title|alias]]`. A link to a page that does not exist is left as it is and listed; `--strict` makes that an error.
+- Frontmatter is copied as written, plus a `description` (the first sentence or two of the note, 150 characters at most). `aliases` carry through, so Obsidian resolves them.
+- `_manifest.json` in the output folder records `type/slug` → filename and is the ownership record. The export never overwrites or removes a file it did not write (a page whose filename is taken by such a file is left out and reported, and links to it stay path-qualified), and it refuses a manifest it did not write. Re-running is safe: a note you have edited by hand is left alone and reported, and a note whose page is gone is kept. `--force` rewrites the first kind and removes the second.
 
 ---
 
@@ -117,7 +134,7 @@ research-wiki/
   SKILL.md          # the skill: commands, safety rules, dispatch
   references/       # the exact steps for ingest / batch / analyze / ask + page templates
   scripts/          # batch, enrich, cluster, and publish helpers
-  build_wiki_html.py  extract_sources.py  match_sources.py
+  build_wiki_html.py  extract_sources.py  match_sources.py  export_obsidian.py
   tests/
   README.md  HANDOVER.md
 ```
