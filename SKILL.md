@@ -5,7 +5,7 @@ description: LLM-maintained research wiki over the book's research sources (X_De
 
 # research-wiki
 
-An LLM-maintained research wiki over the book's research sources. It follows the Karpathy "LLM wiki" pattern: interlinked plain-markdown pages that sit between the reader and the raw sources, maintained incrementally by the model, with the human as editor-in-chief. Three layers: the **raw sources** under `/Users/noahraford/magic/X_Deeper_research/` are read-only sources; the **wiki** at `/Users/noahraford/magic/wiki/` is the LLM-maintained set of pages (sources, concepts, thinkers, debates, themes, answers); and **this skill** is the schema plus the procedures that keep the wiki correct and current.
+An LLM-maintained research wiki over the book's research sources. It follows the Karpathy "LLM wiki" pattern: interlinked plain-markdown pages that sit between the reader and the raw sources, maintained incrementally by the model, with the human as editor-in-chief. Three layers: the **raw sources** under `/Users/noahraford/magic/X_Deeper_research/` are read-only sources; the **wiki** at `/Users/noahraford/magic/wiki/` is the LLM-maintained set of pages (literature, concepts, thinkers, debates, themes, answers); and **this skill** is the schema plus the procedures that keep the wiki correct and current.
 
 The literature live two levels deep: `X_Deeper_research/<chapter-dir>/<source-dir>/` (e.g. `2_Chapter 2/ch2-q4-ritual-nonhuman-powers/`). The wiki compounds: each `ingest` adds a source's concepts and positions; each `analyze` finds where sources agree, disagree, and cluster into emergent themes; each `ask` answers from the accumulated pages and can file the answer back so explorations accumulate rather than evaporate. Everything is plain markdown you can read in Obsidian.
 
@@ -39,7 +39,7 @@ Always read the relevant reference file before acting; the procedures carry the 
 If `/Users/noahraford/magic/wiki/` does not exist, create it before the first ingest:
 
 ```bash
-mkdir -p /Users/noahraford/magic/wiki/{sources,concepts,thinkers,debates,themes,answers,reports}
+mkdir -p /Users/noahraford/magic/wiki/{literature,concepts,thinkers,debates,themes,answers,reports}
 ```
 
 Write a skeleton `/Users/noahraford/magic/wiki/index.md` with one heading per page type, in this order:
