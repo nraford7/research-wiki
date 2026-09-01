@@ -33,8 +33,8 @@ def test_resolve_title_chain():
 
 
 def test_parse_frontmatter_quoted_value_with_comma_and_colon():
-    # bibles use `question:` with commas/colons; must survive
-    txt = ('---\ntype: bible\nslug: ch1-q1\n'
+    # literature pages use `question:` with commas/colons; must survive
+    txt = ('---\ntype: literature\nslug: ch1-q1\n'
            'question: "Do minds, in the strong sense: differ across cultures?"\n---\nbody')
     fm, _ = parse_frontmatter(txt)
     assert resolve_title(fm, "body", None, "ch1-q1") == \
@@ -47,7 +47,7 @@ def test_exclude_metadata():
     assert EXCLUDE("index.md") and EXCLUDE("log.md") and EXCLUDE("about.md")
     assert EXCLUDE("reports/2026-08-30-analysis.md")
     assert not EXCLUDE("concepts/wu-wei.md")
-    assert not EXCLUDE("bibles/ch1-q1-non-western-AI.md")
+    assert not EXCLUDE("literature/ch1-q1-non-western-AI.md")
 
 
 # -- Task 3 -----------------------------------------------------------------
@@ -156,7 +156,7 @@ def test_script_tag_breakout_is_escaped():
                             "slug": "x", "file": "concepts/x", "body": "b"}}
     graph = {"nodes": [], "edges": [], "communities": []}
     front = {"themes": [], "debates": [], "clusters": []}
-    prov = {k: 0 for k in ("bibles", "concepts", "thinkers", "debates", "themes", "answers")}
+    prov = {k: 0 for k in ("literature", "concepts", "thinkers", "debates", "themes", "answers")}
     prov["last_analysis"] = ""
     html = render(pages, graph, None, "", front, prov, {})
     import re as _re
@@ -175,7 +175,7 @@ def test_end_to_end_builds_and_validates(tmp_path):
     assert "Other Minds" in html and 'id="atlas-graph"' in html
     assert 'id="view-index"' in html and 'data-view="index"' in html  # index panel present
     g = json.loads(re.search(r'id="GRAPH"[^>]*>(.*?)</script>', html, re.S).group(1))
-    ok = {"bibles", "concepts", "thinkers", "debates", "themes", "answers"}
+    ok = {"literature", "concepts", "thinkers", "debates", "themes", "answers"}
     assert all(n["key"].split("/")[0] in ok for n in g["nodes"])
     node_ids = {n["id"] for n in g["nodes"]}
     assert all(e["s"] in node_ids and e["t"] in node_ids for e in g["edges"])
