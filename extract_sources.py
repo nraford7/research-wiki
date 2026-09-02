@@ -15,8 +15,11 @@ import re
 
 from bs4 import BeautifulSoup
 
-HTML_DIR = "/Users/noahraford/magic/wiki/literature-html"
-OUT_DIR = "/Users/noahraford/magic/wiki/.literature-text"
+WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+# The two dirs are always <wiki>/literature-html and <wiki>/.literature-text.
+# --html-dir / --out override them explicitly; otherwise they derive from --wiki.
+HTML_DIR = os.path.join(WIKI_DEFAULT, "literature-html")
+OUT_DIR = os.path.join(WIKI_DEFAULT, ".literature-text")
 
 # Apparatus headings: anchored at start (so "Sources (this section)" drops but
 # the analytical "Internal tension the sources flag" does NOT), plus the
@@ -175,11 +178,18 @@ def extract_all(html_dir, out_dir):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Extract sources to section-chunked markdown.")
-    ap.add_argument("--html-dir", default=HTML_DIR)
-    ap.add_argument("--out", default=OUT_DIR)
+    ap.add_argument("--wiki", default=WIKI_DEFAULT,
+                    help="wiki root; html-dir defaults to <wiki>/literature-html, "
+                         "out to <wiki>/.literature-text")
+    ap.add_argument("--html-dir", default=None, help="override <wiki>/literature-html")
+    ap.add_argument("--out", default=None, help="override <wiki>/.literature-text")
     ap.add_argument("--resection", action="store_true",
                     help="inject section ids into the coarse sources' bundled HTML first")
     a = ap.parse_args(argv)
+    if a.html_dir is None:
+        a.html_dir = os.path.join(a.wiki, "literature-html")
+    if a.out is None:
+        a.out = os.path.join(a.wiki, ".literature-text")
     if a.resection:
         resection_coarse(a.html_dir)
         print(f"[extract-sources] re-sectioned coarse sources in {a.html_dir}")

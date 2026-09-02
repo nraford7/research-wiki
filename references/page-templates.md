@@ -1,6 +1,6 @@
 # Page templates
 
-Every wiki page is plain markdown with a YAML frontmatter block followed by a body. Use the exact frontmatter fields and body template for the page's type. All paths absolute: pages live under `/Users/noahraford/magic/wiki/<type>/<slug>.md`.
+Every wiki page is plain markdown with a YAML frontmatter block followed by a body. Use the exact frontmatter fields and body template for the page's type. All paths absolute: pages live under `$WIKI_ROOT/<type>/<slug>.md`.
 
 ## Frontmatter (all types)
 
@@ -157,7 +157,7 @@ Section-scoped replace. Ingesting source B writes or replaces ONLY the `## In <B
 Collision check at creation:
 
 ```bash
-test -f /Users/noahraford/magic/wiki/<type>/<slug>.md
+test -f $WIKI_ROOT/<type>/<slug>.md
 ```
 
 If it exists, it is either the same entity (merge into it, section-scoped) or a genuine different entity of the same type (disambiguate the slug, e.g. append a distinguishing word). Slugs are unique within a type; cross-type same-slug is fine because wikilinks are path-qualified.

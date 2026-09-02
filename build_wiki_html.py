@@ -218,6 +218,27 @@ def read_about(wiki_dir):
     return body
 
 
+def resolve_atlas_title(wiki_dir, override=None):
+    """The atlas masthead title, most-specific first:
+      1. an explicit --title override,
+      2. about.md frontmatter `title:`,
+      3. about.md's H1 (the part before an em-dash/hyphen subtitle),
+      4. the ATLAS_TITLE fallback constant.
+    Keeps a second wiki from wearing this project's name."""
+    if override:
+        return override
+    p = os.path.join(wiki_dir, "about.md")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            fm, body = parse_frontmatter(fh.read())
+        if fm.get("title"):
+            return str(fm["title"]).strip()
+        h = re.search(r'^#\s+(.+)$', body, re.M)
+        if h:
+            return re.split(r'\s[—-]\s', h.group(1).strip(), maxsplit=1)[0].strip()
+    return ATLAS_TITLE
+
+
 def _newest_report(wiki_dir):
     reps = sorted(glob.glob(os.path.join(wiki_dir, "reports", "*-analysis.md")))
     return reps[-1] if reps else None
@@ -570,7 +591,8 @@ __LOGIN_ERROR__
 
 
 def render(pages, graph, about_html, unresolved_html, front, prov, community_labels,
-           cluster_pages=None):
+           cluster_pages=None, title=None):
+    title = title or ATLAS_TITLE
     front_door = _front_door_html(about_html, front, unresolved_html, prov)
     # PAGES payload for client navigation
     payload = {k: {"title": p["title"], "type": p["type"],
@@ -603,10 +625,10 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
     front_json = _safe(front_door)
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark"><title>{_html.escape(ATLAS_TITLE)}</title>
+<meta name="color-scheme" content="light dark"><title>{_html.escape(title)}</title>
 <style>{READER_CSS}{ATLAS_CSS}</style></head><body>
 <header class="masthead">
-  <div><span class="brand">{_html.escape(ATLAS_KICKER)}</span> <h1>{_html.escape(ATLAS_TITLE)}</h1></div>
+  <div><span class="brand">{_html.escape(ATLAS_KICKER)}</span> <h1>{_html.escape(title)}</h1></div>
   <p class="prov">{prov_line}</p>
   <div class="mast-controls">
     <button id="home-btn" title="Front door">⌂ Home</button>
@@ -1044,10 +1066,12 @@ def build_cluster_pages(wiki, pages, graph, labels):
     return payload
 
 
-def build_all(wiki, out, quiet=True):
+def build_all(wiki, out, quiet=True, title=None):
     def log(*a):
         if not quiet:
             print("[wiki-atlas]", *a)
+
+    title = resolve_atlas_title(wiki, title)
 
     anchor_heading = _load_anchor_heading(wiki)
     pages = load_pages(wiki, {})
@@ -1075,14 +1099,14 @@ def build_all(wiki, out, quiet=True):
     front = front_sections(pages, graph, labels)
     cluster_pages = build_cluster_pages(wiki, pages, graph, labels)
     html = render(pages, graph, about_html, unresolved_html, front, prov, labels,
-                  cluster_pages)
+                  cluster_pages, title=title)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(html)
     # public landing/gate page beside the atlas; the deploy server serves it at "/"
     # (creds injected at serve time). Optional artifact — the atlas works without it.
     subtitle, blurb = _about_taglines(wiki, prov)
     with open(os.path.join(wiki, "landing.html"), "w", encoding="utf-8") as fh:
-        fh.write(_landing_html(ATLAS_TITLE, ATLAS_KICKER, subtitle, blurb))
+        fh.write(_landing_html(title, ATLAS_KICKER, subtitle, blurb))
     missing_total = sum(len(p.get("missing", [])) for p in pages.values())
     problems = validate(pages, graph, html, extra_pages=len(cluster_pages))
     if missing_total:
@@ -1094,11 +1118,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Build the wiki atlas HTML.")
     ap.add_argument("--wiki", default=WIKI_DEFAULT)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--title", default=None,
+                    help="atlas masthead title; overrides about.md's title:/H1 "
+                         "(default: resolve from about.md, else the built-in fallback)")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
     out = args.out or os.path.join(args.wiki, "wiki.html")
     try:
-        problems = build_all(args.wiki, out, quiet=args.quiet)
+        problems = build_all(args.wiki, out, quiet=args.quiet, title=args.title)
     except Exception as e:  # hard failure only
         print(f"[wiki-atlas] BUILD FAILED: {e}", file=sys.stderr)
         return 2
