@@ -7,7 +7,11 @@ description: LLM-maintained research wiki over a research-source corpus (e.g. de
 
 An LLM-maintained research wiki over the book's research sources. It follows the Karpathy "LLM wiki" pattern: interlinked plain-markdown pages that sit between the reader and the raw sources, maintained incrementally by the model, with the human as editor-in-chief. Three layers: the **raw sources** under `$SOURCES_ROOT/` are read-only sources; the **wiki** at `$WIKI_ROOT/` is the LLM-maintained set of pages (literature, concepts, thinkers, debates, themes, answers); and **this skill** is the schema plus the procedures that keep the wiki correct and current.
 
-The literature live two levels deep: `$SOURCES_ROOT/<chapter-dir>/<source-dir>/` (e.g. `2_Chapter 2/ch2-q4-ritual-nonhuman-powers/`). The wiki compounds: each `ingest` adds a source's concepts and positions; each `analyze` finds where sources agree, disagree, and cluster into emergent themes; each `ask` answers from the accumulated pages and can file the answer back so explorations accumulate rather than evaporate. Everything is plain markdown you can read in Obsidian.
+The literature live two levels deep: `$SOURCES_ROOT/<chapter-dir>/<source-dir>/` (e.g. `2_Chapter 2/ch2-q4-ritual-nonhuman-powers/`). The wiki compounds: each `ingest` adds a source's concepts and positions; each `analyze` finds where sources agree, disagree, and cluster into emergent themes; each `ask` orients on the accumulated pages, reads the underlying source, and can file the answer back so explorations accumulate rather than evaporate. Everything is plain markdown you can read in Obsidian.
+
+## Reading discipline: the wiki is a MAP, the research documents are the SOURCE
+
+For `ask` and any "read/check the wiki" request: the wiki pages (`concepts/`, `thinkers/`, `debates/`, `themes/`) are a **MAP** — distilled summaries. The full research-document text in `$WIKI_ROOT/.literature-text/*.md` is the **SOURCE**. *(Mnemonic: the wiki is the map; the research documents are the ground it maps.)* Use the map to orient and to locate the right sections, then **READ and ANSWER from the source** — never answer from a map page's summary when the source is one `Read` away. If a request looks map-only, ask the user whether they want a quick map summary or a source-grounded deep dive before answering. Full procedure in `references/ask.md`.
 
 ## Roots
 
@@ -40,7 +44,7 @@ These are non-negotiable and apply to every operation:
 | `ingest <source-dir>` / `ingest --all` | Read `references/ingest.md` and follow it exactly. |
 | `analyze` / `analyze --full` | Read `references/analyze.md` and follow it exactly. |
 | `batch <research-dir>` | Read `references/batch-ingest.md` and follow it exactly. Drives the full loop over a finished directory: ingest one source at a time, delta-analyze every 3, then a final `analyze --full`. Resumable; skips already-ingested and unfinished runs. |
-| `ask <question>` / `ask <question> --file` | Read `references/ask.md` and follow it exactly. |
+| `ask <question>` / `ask <question> --file` | Read `references/ask.md` and follow it exactly — orient on the wiki MAP, then READ and ANSWER from the research documents (`.literature-text`), not the map summaries. If it looks map-only, ask the user first (summary vs. deep dive). |
 | (any operation, for page formats) | Read `references/page-templates.md` — frontmatter, body templates, alias/slug/index rules. |
 
 Always read the relevant reference file before acting; the procedures carry the exact commands, schemas, and templates.
