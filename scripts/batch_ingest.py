@@ -49,8 +49,14 @@ import sys
 DEFAULT_WIKI = "/Users/noahraford/magic/wiki"
 EMPTY_SHA12 = "e3b0c44298fc"  # sha256 of empty input -> zero content files
 
-SLUG_RE = re.compile(r"ch\d+-q\d+", re.IGNORECASE)
 TIMESTAMP_SUFFIX_RE = re.compile(r"-\d{8}t\d+z$", re.IGNORECASE)
+
+# The two layout variants a source can arrive in:
+#   book corpus     <chapter>/ch<N>-q<N>-<slug>/Sections/  + Sources/{claims.jsonl,...}
+#   deeper-research <topic-slug>/sections/                 + top-level claims.jsonl/bibliography.*
+# Qualification is by CONTENT, not by directory name, so both compose out of the box.
+SECTIONS_NAMES = ("Sections", "sections")
+SOURCE_META_NAMES = ("bibliography.bib", "bibliography.md", "claims.jsonl")
 
 
 def find_md(dirpath, exclude_names=()):
@@ -67,18 +73,42 @@ def find_md(dirpath, exclude_names=()):
     return sorted(out)
 
 
-def qualifies(d):
-    """Replicate references/ingest.md Step 0. Returns (ok, reason)."""
+def _sections_dir(d):
+    """The section-chunk dir, whichever case is present (`Sections/` or `sections/`).
+    Returns the first that exists; falls back to the canonical `Sections/`."""
+    for name in SECTIONS_NAMES:
+        p = os.path.join(d, name)
+        if os.path.isdir(p):
+            return p
+    return os.path.join(d, SECTIONS_NAMES[0])
+
+
+def _sources_files(d):
+    """The source-metadata files, sorted. deeper-research writes them at the run
+    root; the book corpus nests them under `Sources/`. Prefer `Sources/` when it
+    exists (keeps existing book-corpus hashes byte-stable), else read the run root."""
+    src_dir = os.path.join(d, "Sources")
+    base = src_dir if os.path.isdir(src_dir) else d
+    out = [os.path.join(base, n) for n in SOURCE_META_NAMES
+           if os.path.isfile(os.path.join(base, n))]
+    return sorted(out)
+
+
+def qualifies(d, name_pattern=None):
+    """Replicate references/ingest.md Step 0. Returns (ok, reason).
+
+    Qualification is by content structure so a source qualifies under any
+    directory name (book-corpus `ch<N>-q<N>-*` and deeper-research topic slugs
+    alike). Pass name_pattern to additionally restrict by name."""
     name = os.path.basename(d.rstrip("/"))
-    if not SLUG_RE.search(name):
-        return False, "name-not-chN-qN"
+    if name_pattern and not re.search(name_pattern, name, re.IGNORECASE):
+        return False, "name-pattern-mismatch"
     if "superseded" in name.lower():
         return False, "superseded"
     if TIMESTAMP_SUFFIX_RE.search(name):
         return False, "timestamped-variant"
-    sections = os.path.join(d, "Sections")
-    # (a) Sections/ with >= 3 md
-    if len(find_md(sections)) >= 3:
+    # (a) a sections dir (either case) with >= 3 md
+    if len(find_md(_sections_dir(d))) >= 3:
         return True, "sections"
     # (b) a root *source*.md (case-insensitive)
     roots = find_md(d)
@@ -93,25 +123,23 @@ def qualifies(d):
 def content_hash(d):
     """Byte-for-byte compatible with references/ingest.md Step 1.
 
-    CONTENT = Sections/*.md (excl bibliography.md, dedup-decisions.md) if >=3,
+    CONTENT = <sections>/*.md (excl bibliography.md, dedup-decisions.md) if >=3,
               else root *source*.md, else all root *.md.  (each sorted)
-    SOURCES = Sources/{claims.jsonl,bibliography.md,bibliography.bib} (sorted)
+    SOURCES = {claims.jsonl,bibliography.md,bibliography.bib} from Sources/ or the
+              run root (sorted)
     hash = sha256( concat(CONTENT_sorted + SOURCES_sorted) )[:12]
+
+    `<sections>` is `Sections/` or `sections/`, whichever exists, so a source
+    hashes identically no matter which layout it arrived in.
     """
-    sections = os.path.join(d, "Sections")
+    sections = _sections_dir(d)
     if len(find_md(sections)) >= 3:
         content = find_md(sections, exclude_names={"bibliography.md", "dedup-decisions.md"})
     else:
         content = [p for p in find_md(d) if "source" in os.path.basename(p).lower()]
         if not content:
             content = find_md(d)
-    src_dir = os.path.join(d, "Sources")
-    sources = []
-    for base in ("bibliography.bib", "bibliography.md", "claims.jsonl"):
-        p = os.path.join(src_dir, base)
-        if os.path.isfile(p):
-            sources.append(p)
-    sources = sorted(sources)
+    sources = _sources_files(d)
     h = hashlib.sha256()
     for p in content + sources:
         try:
@@ -143,19 +171,38 @@ def is_locked(d):
     return False
 
 
-def enumerate_sources(research_dir):
-    """chN-qN-* dirs at depth 1 or 2 under research_dir, sorted by slug."""
+def _subdirs(d):
+    """Immediate subdirectories of d, as full paths (unsorted)."""
+    try:
+        return [os.path.join(d, n) for n in os.listdir(d)
+                if os.path.isdir(os.path.join(d, n))]
+    except OSError:
+        return []
+
+
+def enumerate_sources(research_dir, name_pattern=None):
+    """Source dirs at depth 1 or 2 under research_dir, sorted by slug (basename).
+
+    Qualification is by content (see qualifies), not by name, so a flat directory
+    of deeper-research runs (`<topic-slug>/sections/`) and a book corpus nested
+    under chapter dirs (`<chapter>/ch<N>-q<N>-*/Sections/`) both enumerate. A dir
+    that itself qualifies is a source and is NOT descended into (so its own
+    `sections/` is never mistaken for a nested source); a dir that does not
+    qualify is treated as a wrapper and descended one level."""
     found = {}
     research_dir = os.path.abspath(research_dir)
-    for root, dirs, _files in os.walk(research_dir):
-        depth = root[len(research_dir):].count(os.sep)
-        if depth >= 2:
-            dirs[:] = []  # don't descend past chapter/source level
-            continue
-        for dname in dirs:
-            if SLUG_RE.search(dname):
-                p = os.path.join(root, dname)
-                found[os.path.basename(p)] = p
+
+    def consider(p):
+        ok, _ = qualifies(p, name_pattern)
+        if ok:
+            found.setdefault(os.path.basename(p.rstrip("/")), p)
+        return ok
+
+    for lvl1 in sorted(_subdirs(research_dir)):
+        if consider(lvl1):
+            continue                       # depth-1 source (e.g. a deeper-research run)
+        for lvl2 in sorted(_subdirs(lvl1)):
+            consider(lvl2)                 # depth-2 source (e.g. book-corpus leaf)
     # dedup by slug (basename); sort by slug for stable q-order
     return [found[k] for k in sorted(found)]
 
@@ -320,22 +367,30 @@ def cmd_json(rows, records, every):
 
 def main():
     ap = argparse.ArgumentParser(description="Planner/tracker for batch wiki ingest.")
-    ap.add_argument("research_dir", help="directory of research products (chN-qN-* subdirs)")
+    ap.add_argument("research_dir",
+                    help="directory of research products (source subdirs, one or two "
+                         "levels deep; qualified by content, any naming)")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--plan", action="store_true", help="full human-readable plan (default)")
     mode.add_argument("--next", action="store_true", help="print only the next action")
     mode.add_argument("--json", action="store_true", help="machine-readable plan")
     ap.add_argument("--every", type=int, default=3, help="delta-analyze cadence (default 3)")
     ap.add_argument("--wiki", default=DEFAULT_WIKI, help="wiki path")
+    ap.add_argument("--name-pattern", default=None,
+                    help="optional regex to restrict which source dir NAMES qualify "
+                         r"(e.g. 'ch\d+-q\d+' for the book corpus only); default: any name")
     args = ap.parse_args()
 
     if not os.path.isdir(args.research_dir):
         print(f"error: not a directory: {args.research_dir}", file=sys.stderr)
         sys.exit(2)
 
-    sources = enumerate_sources(args.research_dir)
+    sources = enumerate_sources(args.research_dir, args.name_pattern)
     if not sources:
-        print(f"error: no chN-qN-* source dirs found under {args.research_dir}", file=sys.stderr)
+        hint = (f" matching /{args.name_pattern}/" if args.name_pattern else "")
+        print(f"error: no qualifying source dirs found under {args.research_dir}{hint} "
+              f"(a source needs a Sections/ or sections/ dir with >=3 .md, a "
+              f"*source*.md, or a single >=50KB .md)", file=sys.stderr)
         sys.exit(2)
 
     rows, records = classify(sources, args.wiki)

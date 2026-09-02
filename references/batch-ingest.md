@@ -32,9 +32,13 @@ python3 -B ~/.claude/skills/research-wiki/scripts/batch_ingest.py "<research-dir
 Report the plan to the user in one or two lines: how many sources, how many will
 be ingested, how many are already current, and any `not-a-source` (still
 mid-run / incomplete) or `locked` (a live deeper-research lease) that will be
-skipped. `not-a-source` on a `chN-qN-*` dir almost always means the run has not
-finished (no `Sections/` with ≥3 md and no ≥50KB monolith yet) — say so, and note
-they will be picked up automatically on a later `batch` run.
+skipped. `not-a-source` on a run dir almost always means it has not finished
+(no `Sections/`/`sections/` with ≥3 md and no ≥50KB monolith yet) — say so, and
+note it will be picked up automatically on a later `batch` run. The planner
+qualifies sources by content, so it handles both layouts: the book corpus
+(`ch<N>-q<N>-*/Sections/` nested under chapter dirs) and a flat directory of
+deeper-research runs (`<topic-slug>/sections/` + top-level `claims.jsonl`). Pass
+`--name-pattern 'ch\d+-q\d+'` to restrict enumeration to book-corpus naming.
 
 ## Step 2 — Drive the loop
 

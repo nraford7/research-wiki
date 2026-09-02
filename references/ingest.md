@@ -6,18 +6,19 @@ If the wiki does not exist yet, do the First-run bootstrap from SKILL.md before 
 
 ## Step 0 — Is this dir an ingestable source?
 
-A directory `$D` qualifies iff its name matches `ch<N>-q<N>-*`, its name does NOT contain `superseded` and does NOT end in a timestamp suffix (regex `-\d{8}t\d+z$`, case-insensitive), AND at least one of these three tests succeeds (try in order):
+Qualification is by CONTENT, not by directory name, so a source qualifies under any name — the book corpus's `ch<N>-q<N>-*` and a deeper-research run's topic slug (e.g. `ai-impact-1-executives`) alike. A directory `$D` qualifies iff its name does NOT contain `superseded` and does NOT end in a timestamp suffix (regex `-\d{8}t\d+z$`, case-insensitive), AND at least one of these three tests succeeds (try in order). The section dir may be `Sections/` (book corpus) or `sections/` (deeper-research); `$SEC` below resolves whichever exists:
 
 ```bash
-# (a) Sections/ with >=3 md files:
-[ "$(find "$D/Sections" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]
+SEC="$D/Sections"; [ -d "$D/sections" ] && [ ! -d "$D/Sections" ] && SEC="$D/sections"
+# (a) a sections dir (either case) with >=3 md files:
+[ "$(find "$SEC" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]
 # (b) a root monolith named like a source (case-insensitive):
 [ "$(find "$D" -maxdepth 1 -iname '*source*.md' | wc -l)" -ge 1 ]
 # (c) exactly one root .md and it is >= 50KB:
 [ "$(find "$D" -maxdepth 1 -name '*.md' | wc -l)" -eq 1 ] && [ "$(find "$D" -maxdepth 1 -name '*.md' -size +50k | wc -l)" -eq 1 ]
 ```
 
-Known irregulars this must catch: `ch1-q1` (single root md → test c), `ch1-q6` (`western-philosophy-of-mind-BIBLE.md` → test b), `ch1-q2` (monolith + Sources, no Sections/ → test b/c). If passed an explicit dir that fails all three, report "not a source" and stop.
+Known irregulars this must catch: `ch1-q1` (single root md → test c), `ch1-q6` (`western-philosophy-of-mind-BIBLE.md` → test b), `ch1-q2` (monolith + Sources, no Sections/ → test b/c), a deeper-research run (`sections/` lowercase + top-level `claims.jsonl` → test a). If passed an explicit dir that fails all three, report "not a source" and stop.
 
 ## Step 1 — Validate + idempotency
 
@@ -25,13 +26,16 @@ Derive `slug` = the source dir's basename. Compute the content hash:
 
 ```bash
 D="<source-dir>"
-if [ "$(find "$D/Sections" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]; then
-  CONTENT=$(find "$D/Sections" -maxdepth 1 -name '*.md' ! -name 'bibliography.md' ! -name 'dedup-decisions.md' | sort)
+SEC="$D/Sections"; [ -d "$D/sections" ] && [ ! -d "$D/Sections" ] && SEC="$D/sections"
+if [ "$(find "$SEC" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)" -ge 3 ]; then
+  CONTENT=$(find "$SEC" -maxdepth 1 -name '*.md' ! -name 'bibliography.md' ! -name 'dedup-decisions.md' | sort)
 else
   CONTENT=$(find "$D" -maxdepth 1 -iname '*source*.md' | sort)
   [ -z "$CONTENT" ] && CONTENT=$(find "$D" -maxdepth 1 -name '*.md' | sort)
 fi
-SOURCES=$(find "$D/Sources" -maxdepth 1 \( -name 'claims.jsonl' -o -name 'bibliography.md' -o -name 'bibliography.bib' \) 2>/dev/null | sort)
+# source metadata lives under Sources/ (book corpus) or at the run root (deeper-research)
+SRC="$D/Sources"; [ -d "$SRC" ] || SRC="$D"
+SOURCES=$(find "$SRC" -maxdepth 1 \( -name 'claims.jsonl' -o -name 'bibliography.md' -o -name 'bibliography.bib' \) 2>/dev/null | sort)
 printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0 cat | shasum -a 256 | cut -c1-12
 ```
 
@@ -52,9 +56,11 @@ printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0
 
 ## Step 2 — Read the source (read-only)
 
-- Content: `Sections/*.md` EXCLUDING `bibliography.md` and `dedup-decisions.md` (reference lists, not content). If there is no qualifying `Sections/`, read the monolith and chunk it on `#`/`##` headings into ~2–4k-word units.
-- `Sources/claims.jsonl`: these are SOURCE records (`url, title, year, slice, tier`) — no claim text, no author. Skip malformed lines with a per-line warning; a missing/empty file is a warning, not a failure.
-- `Sources/bibliography.md` (primary) / `Sources/bibliography.bib` (fallback) — title/url/year lists. NOTE: these carry NO author field. The surname in a `[Surname, YYYY]` citation is resolved from the **section prose itself** (the text names "Victor Turner" beside `[Turner, 1969]`), not from the bibliography. Keep each citation verbatim as it appears in the section.
+- Content: the section dir's `*.md` (`Sections/` or `sections/`, whichever exists) EXCLUDING `bibliography.md` and `dedup-decisions.md` (reference lists, not content). If there is no qualifying section dir, read the monolith and chunk it on `#`/`##` headings into ~2–4k-word units.
+- `claims.jsonl` (under `Sources/`, or at the run root for deeper-research) comes in **two shapes — detect per line by its keys**; skip malformed lines with a per-line warning, and treat a missing/empty file as a warning, not a failure:
+  - **Source records** — `{url, title, year, slice, tier}`, no claim text, no author (book-corpus export). Use as the source/tier list.
+  - **Claim records** — `{file, sentence, citations}`, where each citation is `{author, year, kind}` (+ `url` for `kind:"web"`) (deeper-research export). Each `sentence` is a verbatim, citation-bearing claim: use them as quotable evidence and to resolve `[Author, year]` inline citations. These records carry NO per-record url/title/year/tier — that source-level metadata lives in `bibliography.md`/`.bib` (read below) and, if present, the run's `round*/slice_*.jsonl` (`{url, title, tier, slice, published_date, …}`). Do not treat a claim record's absence of `url/title/year/tier` as malformed.
+- `bibliography.md` (primary) / `bibliography.bib` (fallback), under `Sources/` or the run root — title/url/year lists. NOTE: these carry NO author field. The surname in a `[Surname, YYYY]` citation is resolved from the **section prose itself** (the text names "Victor Turner" beside `[Turner, 1969]`), or from a claim record's `citations[].author`, not from the bibliography. Keep each citation verbatim as it appears in the section.
 
 Before writing anything, `touch /tmp/wb-marker` so the read-only invariant can be verified after (see Step 6).
 
@@ -124,11 +130,14 @@ A typical source touches 10–25 pages. Fill the source page's "Pages from this 
 
 ## `--all`
 
-Enumerate candidate dirs (zsh-safe), then test each against Step 0's three qualification commands, ingest matches sequentially (skipping already-ingested), and print a one-line status per dir with its skip reason (`already-ingested | superseded | locked | not-a-source`):
+Enumerate candidate dirs (zsh-safe), then test each against Step 0's three qualification commands, ingest matches sequentially (skipping already-ingested), and print a one-line status per dir with its skip reason (`already-ingested | superseded | locked | not-a-source`).
+
+Because sources qualify by content under any name, enumerate BOTH depth 1 (a flat directory of deeper-research runs) and depth 2 (the book corpus nested under chapter dirs), and let the Step-0 tests do the filtering — chapter wrappers, `Process`, `round*/`, `0_Research Guide` and other non-sources simply fail Step 0 and are skipped:
 
 ```bash
-find $SOURCES_ROOT -mindepth 2 -maxdepth 2 -type d -name 'ch*-q*' \
-  | grep -viE '(superseded|-[0-9]{8}t[0-9]+z$)' | sort
+{ find $SOURCES_ROOT -mindepth 1 -maxdepth 1 -type d
+  find $SOURCES_ROOT -mindepth 2 -maxdepth 2 -type d
+} | grep -viE '(superseded|-[0-9]{8}t[0-9]+z$)' | sort -u
 ```
 
-(The `-name 'ch*-q*'` filter enforces spec §4.1.7's chapter exclusions — `0_Research Guide`, `Process`, and dot-dirs hold no `ch*-q*` children, so they never appear. The `grep -viE` drops `superseded`/timestamped variants; the Step-0 tests drop non-sources; the lock check drops locked ones.)
+(The `grep -viE` drops `superseded`/timestamped variants up front; the Step-0 tests drop non-sources — including a qualified depth-1 source's own `sections/`, which fails all three; the idempotency check drops already-ingested ones; the lock check drops locked ones. For a large corpus, prefer `batch` — `batch_ingest.py` does exactly this enumeration in one pass.)
