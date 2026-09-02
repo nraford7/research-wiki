@@ -87,7 +87,7 @@ Run these checks and fix the mechanical ones; queue judgment calls for the repor
 - **Dangling wikilinks** (regex allows UPPERCASE — source slugs like `ch1-q1-non-western-AI` contain capitals; exclude `reports/` and `themes` example placeholders by scanning only the page directories, not the reports):
   ```bash
   grep -rohE '\[\[[A-Za-z0-9/_-]+\]\]' \
-    /Users/noahraford/magic/wiki/sources /Users/noahraford/magic/wiki/concepts \
+    /Users/noahraford/magic/wiki/literature /Users/noahraford/magic/wiki/concepts \
     /Users/noahraford/magic/wiki/thinkers /Users/noahraford/magic/wiki/debates \
     /Users/noahraford/magic/wiki/themes /Users/noahraford/magic/wiki/answers \
     --include='*.md' | sort -u
