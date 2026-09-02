@@ -4,12 +4,12 @@ Cross-source sweep. `analyze` runs in delta mode (default); `analyze --full` swe
 
 ## Delta detection (the only procedure)
 
-Scope = sources named in `| ingest |` log lines that appear AFTER the last `| analyze |` line in `/Users/noahraford/magic/wiki/log.md`. If there is no prior `| analyze |` line, scope = every source in the log. `--full` overrides scope to **all** sources listed under `## Literature` in `index.md`.
+Scope = sources named in `| ingest |` log lines that appear AFTER the last `| analyze |` line in `$WIKI_ROOT/log.md`. If there is no prior `| analyze |` line, scope = every source in the log. `--full` overrides scope to **all** sources listed under `## Literature` in `index.md`.
 
 Exact delta command (field 3 of an ingest line is the source slug):
 
 ```bash
-LOG=/Users/noahraford/magic/wiki/log.md
+LOG=$WIKI_ROOT/log.md
 START=$(grep -n '| analyze |' "$LOG" | tail -1 | cut -d: -f1); START=${START:-0}
 awk -v s="$START" -F' \\| ' 'NR>s && $2=="ingest" {print $3}' "$LOG" | sort -u
 ```
@@ -27,7 +27,7 @@ For each concept/thinker page whose `sources:` frontmatter intersects the scope 
 
 Cluster the theme candidates into `themes/<slug>.md` pages (theme template). Seeds:
 
-- If `/Users/noahraford/magic/wiki/graphify-out/graph.json` exists, read its detected communities and use them as cluster seeds. (graphify output now lives *inside* the wiki at `wiki/graphify-out/` — always run graphify with CWD `/Users/noahraford/magic/wiki`, never at `magic/` scope and never under `X_Deeper_research/`.)
+- If `$WIKI_ROOT/graphify-out/graph.json` exists, read its detected communities and use them as cluster seeds. (graphify output now lives *inside* the wiki at `wiki/graphify-out/` — always run graphify with CWD `$WIKI_ROOT`, never at `magic/` scope and never under `X_Deeper_research/`.)
 - Otherwise derive clusters from frontmatter co-occurrence: pages sharing sources in their `sources:` list plus shared outbound wikilinks.
 
 Graphify is an optional enhancer — never require it.
@@ -87,12 +87,12 @@ Run these checks and fix the mechanical ones; queue judgment calls for the repor
 - **Dangling wikilinks** (regex allows UPPERCASE — source slugs like `ch1-q1-non-western-AI` contain capitals; exclude `reports/` and `themes` example placeholders by scanning only the page directories, not the reports):
   ```bash
   grep -rohE '\[\[[A-Za-z0-9/_-]+\]\]' \
-    /Users/noahraford/magic/wiki/literature /Users/noahraford/magic/wiki/concepts \
-    /Users/noahraford/magic/wiki/thinkers /Users/noahraford/magic/wiki/debates \
-    /Users/noahraford/magic/wiki/themes /Users/noahraford/magic/wiki/answers \
+    $WIKI_ROOT/literature $WIKI_ROOT/concepts \
+    $WIKI_ROOT/thinkers $WIKI_ROOT/debates \
+    $WIKI_ROOT/themes $WIKI_ROOT/answers \
     --include='*.md' | sort -u
   ```
-  For each link `[[<type>/<slug>]]`, confirm `test -f /Users/noahraford/magic/wiki/<type>/<slug>.md`. A miss is a dangling link — fix the link or create the missing stub. Ignore single-letter placeholder slugs (`x`, `y`) that appear only inside a page's own literal template example.
+  For each link `[[<type>/<slug>]]`, confirm `test -f $WIKI_ROOT/<type>/<slug>.md`. A miss is a dangling link — fix the link or create the missing stub. Ignore single-letter placeholder slugs (`x`, `y`) that appear only inside a page's own literal template example.
 - **Orphans:** pages that never appear in the link list above (nothing links to them). Note in the report.
 - **Stale stubs:** pages with `status: stub` older than the previous analyze — flag for enrichment.
 - **Thin synthesis leads:** any `themes/` or `debates/` page whose lead (the prose before its first `## `/table/`- ` block) is under ~250 words → it is an un-enriched stub; enrich it per the **Lead enrichment standard** above before finishing.
@@ -101,7 +101,7 @@ Run these checks and fix the mechanical ones; queue judgment calls for the repor
 
 ## Report
 
-Write `/Users/noahraford/magic/wiki/reports/<YYYY-MM-DD>-analysis.md` with these six sections (all present, even if empty):
+Write `$WIKI_ROOT/reports/<YYYY-MM-DD>-analysis.md` with these six sections (all present, even if empty):
 
 ```markdown
 # Analysis — <YYYY-MM-DD>
@@ -118,7 +118,7 @@ The last section is the research-gap signal fed back to the deeper-research pipe
 
 ## Log + commit
 
-Append EXACTLY one line to `/Users/noahraford/magic/wiki/log.md`:
+Append EXACTLY one line to `$WIKI_ROOT/log.md`:
 
 ```
 YYYY-MM-DD HH:MM | analyze | scope:<delta|full> | sources:<comma-list|all> | debates:+<n> themes:+<n> fixes:<n>
@@ -130,7 +130,7 @@ Concrete example (delta run over two sources):
 2026-08-30 14:30 | analyze | scope:delta | sources:ch2-q4-ritual-nonhuman-powers,ch2-q8-creativity-reception | debates:+1 themes:+0 fixes:+2
 ```
 
-Then commit (if the wiki repo exists): `cd /Users/noahraford/magic/wiki && git add -A && git commit -m "analyze: <YYYY-MM-DD>"`.
+Then commit (if the wiki repo exists): `cd $WIKI_ROOT && git add -A && git commit -m "analyze: <YYYY-MM-DD>"`.
 
 ## Enrichment pass (`--full` only)
 
@@ -167,7 +167,7 @@ This is the pass that brings a freshly-ingested chapter to the depth of the rest
 ## graphify refresh (`--full`, before the atlas)
 
 Refresh community detection so new pages are colored/clustered, not dumped in one group:
-invoke the **graphify** skill on the wiki (CWD `/Users/noahraford/magic/wiki`, output
+invoke the **graphify** skill on the wiki (CWD `$WIKI_ROOT`, output
 `wiki/graphify-out/`, `--update` on later runs). graphify is **agent-driven — there is no
 build CLI** (`graphify` the command only installs the skill / manages hooks). Non-fatal: if
 it can't run, `build_wiki_html.py`'s partial-graph fallback still includes every page (as an
@@ -229,14 +229,14 @@ must run here:
 Every `analyze` run ends by refreshing the semantic-search index so the new debates/themes/stubs are immediately searchable. Run it AFTER the commit (the index DB is git-ignored, so ordering vs. commit does not matter, but running last keeps the analytical work the priority):
 
 ```bash
-python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/magic/wiki --index --quiet
+python3 -B ~/.claude/skills/semantic-search/search.py --cwd $WIKI_ROOT --index --quiet
 ```
 
-- **`--cwd` scopes indexing to the wiki ONLY.** Never omit it and never point it at `magic/` or anything under `/Users/noahraford/magic/X_Deeper_research/` — the indexer writes a `.semantic-index.db` into its root, and doing so under the read-only sources violates the safety invariant. The DB lands at `/Users/noahraford/magic/wiki/.semantic-index.db`, which the wiki `.gitignore` excludes.
-- **Source-corpus index (separate).** The primary-source RAG corpus lives at `/Users/noahraford/magic/wiki/.literature-text/` (dot-prefixed, so the wiki index walker auto-skips it — the two indexes stay separate). It's built by `extract_sources.py` from `wiki/literature-html/`. **On `--full`, first (re)build it so newly-published sources + their deep-link anchors are included, THEN refresh its index:**
+- **`--cwd` scopes indexing to the wiki ONLY.** Never omit it and never point it at `magic/` or anything under `$SOURCES_ROOT/` — the indexer writes a `.semantic-index.db` into its root, and doing so under the read-only sources violates the safety invariant. The DB lands at `$WIKI_ROOT/.semantic-index.db`, which the wiki `.gitignore` excludes.
+- **Source-corpus index (separate).** The primary-source RAG corpus lives at `$WIKI_ROOT/.literature-text/` (dot-prefixed, so the wiki index walker auto-skips it — the two indexes stay separate). It's built by `extract_sources.py` from `wiki/literature-html/`. **On `--full`, first (re)build it so newly-published sources + their deep-link anchors are included, THEN refresh its index:**
   ```bash
   python3 -B ~/.claude/skills/research-wiki/extract_sources.py --resection      # rebuild .literature-text/*.md + anchors.json from literature-html/
-  python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/magic/wiki/.literature-text --index --quiet
+  python3 -B ~/.claude/skills/semantic-search/search.py --cwd $WIKI_ROOT/.literature-text --index --quiet
   ```
   This is the corpus that `magic/CLAUDE.md` tells free-form chat to retrieve from — if `literature-html/` is missing sources (see ingest Step 3b), they are invisible here. `match_sources.py` (in the enrichment pass) depends on the `anchors.json` this writes, so resection must run before it for freshly-published sources to get section-level deep-links.
 - The refresh is **incremental** (only changed files re-embed) and **non-fatal**: if it fails (e.g. no `OPENAI_API_KEY` in env or `~/.env`), note it in the run summary and continue — the analyze itself still succeeded. Search is an optional enhancer, never a gate.
@@ -247,12 +247,12 @@ python3 -B ~/.claude/skills/semantic-search/search.py --cwd /Users/noahraford/ma
 After the search refresh, regenerate the **wiki atlas** — one self-contained, styled `wiki/wiki.html` (a reading pane + an interactive, collapsible, community-colored graph navigator built from the wiki pages and `wiki/graphify-out/graph.json`). This makes every new debate/theme/page immediately browsable without Obsidian.
 
 ```bash
-python3 -B ~/.claude/skills/research-wiki/build_wiki_html.py --wiki /Users/noahraford/magic/wiki --quiet \
+python3 -B ~/.claude/skills/research-wiki/build_wiki_html.py --wiki $WIKI_ROOT --quiet \
   || echo "[atlas] build failed — noted, continuing (analyze still succeeded)"
 ```
 
 - **Non-fatal enhancer**, same contract as the search refresh: the `|| echo …` makes non-fatality mechanical — if the build fails (e.g. `markdown`/`networkx`/PyYAML missing, exit 1/2), note it in the run summary and continue; the analyze itself still succeeded.
-- Output is `/Users/noahraford/magic/wiki/wiki.html` (~1 MB, git-ignored). If `graph.json` is absent it still builds, using a degraded graph from wikilinks only (no community colors).
+- Output is `$WIKI_ROOT/wiki.html` (~1 MB, git-ignored). If `graph.json` is absent it still builds, using a degraded graph from wikilinks only (no community colors).
 - It reads only under `wiki/` (pages + `wiki/graphify-out/`); it never touches `X_Deeper_research/`. Community names come from `wiki/graphify-out/GRAPH_REPORT.md` (parsed at build time, since community numbering changes each run).
 - **Front door (`about.md`).** The landing lead is the one hand-written part of the atlas. Keep it **topic-framed and extensible** — describe the intellectual territory the wiki covers (e.g. "What minds, life, and intelligence are"; "Mind in practice"), and **never organize it by the book's chapter structure** ("Chapter 1 / Chapter 2…") or hardcode counts ("seventeen sources"). The auto sections — the provenance count line, **themes**, **live questions**, **topic clusters**, and the graph — already regenerate from whatever the corpus currently holds and scale on their own, so the lead must stay true as new questions/material are added without needing per-chapter edits.
 - **Public splash + login gate (`landing.html`).** The build also emits a public splash page (title + subtitle from `about.md`) that carries a **username/password login form** (`POST /login`) — no credentials are ever shown or embedded. A password-protected deploy serves `landing.html` at `/` publicly, and its `server.js` validates the form against `ATLAS_USER`/`ATLAS_PASSWORD`, sets an HttpOnly session cookie, and gates the atlas (`/wiki.html`) + source pages on that cookie (redirecting to `/` when absent). The build inserts a `__LOGIN_ERROR__` placeholder the server fills after a failed attempt. See the reference `server.js` in the deployed wiki repo.

@@ -40,7 +40,7 @@ printf '%s\n%s\n' "$CONTENT" "$SOURCES" | grep -v '^$' | tr '\n' '\0' | xargs -0
 - **Empty-hash guard:** if the result is `e3b0c44298fc` (SHA-256 of empty input), STOP — the source resolved to zero content files. Report it; do not ingest.
 - **Idempotency:** check the log:
   ```bash
-  grep -F "| ingest | <slug> | sha256:<hash>" /Users/noahraford/magic/wiki/log.md
+  grep -F "| ingest | <slug> | sha256:<hash>" $WIKI_ROOT/log.md
   ```
   A hit → print `already ingested; use --force` and stop (unless `--force` was passed).
 - **Lock check** — an active lock is a *live lease*, not transaction/backup residue. Scan ONLY `.locks/leases/*/holders.json` (64 KB), never the 500 MB+ `.transactions` tree (a recursive grep there false-positives on stale migration backups and is slow):
@@ -60,7 +60,7 @@ Before writing anything, `touch /tmp/wb-marker` so the read-only invariant can b
 
 ## Step 3 — Source page
 
-Create/update `/Users/noahraford/magic/wiki/literature/<slug>.md` from the **source** template in `page-templates.md`: core question, method note, position map, 10–20 key sources by tier, and links to every wiki page this source touches (filled in during Step 5).
+Create/update `$WIKI_ROOT/literature/<slug>.md` from the **source** template in `page-templates.md`: core question, method note, position map, 10–20 key sources by tier, and links to every wiki page this source touches (filled in during Step 5).
 
 ## Step 3b — Publish the readable HTML (auxiliary layer)
 
@@ -73,7 +73,7 @@ exactly how ch4–ch6 went missing).
 
 ```bash
 python3 -B ~/.claude/skills/research-wiki/scripts/publish_source_html.py \
-  --source-dir "<source-dir>" --wiki /Users/noahraford/magic/wiki
+  --source-dir "<source-dir>" --wiki $WIKI_ROOT
 ```
 
 It copies `RESEARCH-REPORT_<slug>.html` → `literature-html/<slug>.html`, scrubbing
@@ -113,21 +113,21 @@ A typical source touches 10–25 pages. Fill the source page's "Pages from this 
 
 ## Step 6 — Bookkeeping + read-only proof
 
-- Update the touched lines in `/Users/noahraford/magic/wiki/index.md` (per-type headings; index line format from `page-templates.md`).
+- Update the touched lines in `$WIKI_ROOT/index.md` (per-type headings; index line format from `page-templates.md`).
 - Bump `updated:` frontmatter to today on every page you touched.
-- Append EXACTLY one line to `/Users/noahraford/magic/wiki/log.md`:
+- Append EXACTLY one line to `$WIKI_ROOT/log.md`:
   ```
   YYYY-MM-DD HH:MM | ingest | <source-slug> | sha256:<12-hex> | created:<n> updated:<n>
   ```
-- Prove read-only: `find /Users/noahraford/magic/X_Deeper_research -newer /tmp/wb-marker -type f ! -name '.DS_Store'` must be empty. If it is not, something wrote to the literature — stop and report.
-- Commit the wiki: `cd /Users/noahraford/magic/wiki && git add -A && git commit -m "ingest: <source-slug>"` (if the repo exists).
+- Prove read-only: `find $SOURCES_ROOT -newer /tmp/wb-marker -type f ! -name '.DS_Store'` must be empty. If it is not, something wrote to the literature — stop and report.
+- Commit the wiki: `cd $WIKI_ROOT && git add -A && git commit -m "ingest: <source-slug>"` (if the repo exists).
 
 ## `--all`
 
 Enumerate candidate dirs (zsh-safe), then test each against Step 0's three qualification commands, ingest matches sequentially (skipping already-ingested), and print a one-line status per dir with its skip reason (`already-ingested | superseded | locked | not-a-source`):
 
 ```bash
-find /Users/noahraford/magic/X_Deeper_research -mindepth 2 -maxdepth 2 -type d -name 'ch*-q*' \
+find $SOURCES_ROOT -mindepth 2 -maxdepth 2 -type d -name 'ch*-q*' \
   | grep -viE '(superseded|-[0-9]{8}t[0-9]+z$)' | sort
 ```
 

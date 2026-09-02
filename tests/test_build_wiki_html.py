@@ -7,8 +7,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from build_wiki_html import (  # noqa: E402
-    EXCLUDE, build_all, load_graph, md_to_html, parse_frontmatter,
-    provenance, read_community_labels, render, resolve_title,
+    ATLAS_TITLE, EXCLUDE, build_all, load_graph, md_to_html, parse_frontmatter,
+    provenance, read_community_labels, render, resolve_atlas_title, resolve_title,
 )
 
 WIKI = "/Users/noahraford/magic/wiki"
@@ -179,3 +179,54 @@ def test_end_to_end_builds_and_validates(tmp_path):
     assert all(n["key"].split("/")[0] in ok for n in g["nodes"])
     node_ids = {n["id"] for n in g["nodes"]}
     assert all(e["s"] in node_ids and e["t"] in node_ids for e in g["edges"])
+
+
+# -- atlas title portability (issue #7) -------------------------------------
+
+def _about(tmp_path, text):
+    (tmp_path / "about.md").write_text(text)
+    return str(tmp_path)
+
+
+def test_resolve_atlas_title_override_wins(tmp_path):
+    w = _about(tmp_path, "---\ntitle: From File\n---\n# From H1\n")
+    assert resolve_atlas_title(w, "Explicit") == "Explicit"
+
+
+def test_resolve_atlas_title_reads_frontmatter(tmp_path):
+    w = _about(tmp_path, "---\ntitle: My Second Wiki\n---\n# Ignored H1\n")
+    assert resolve_atlas_title(w) == "My Second Wiki"
+
+
+def test_resolve_atlas_title_falls_back_to_h1_before_dash(tmp_path):
+    w = _about(tmp_path, "# Second Wiki — A research atlas\n\nlead para\n")
+    assert resolve_atlas_title(w) == "Second Wiki"
+
+
+def test_resolve_atlas_title_uses_full_h1_when_no_dash(tmp_path):
+    w = _about(tmp_path, "# Just A Title\n\nlead para\n")
+    assert resolve_atlas_title(w) == "Just A Title"
+
+
+def test_resolve_atlas_title_falls_back_to_constant_when_no_about(tmp_path):
+    assert resolve_atlas_title(str(tmp_path)) == ATLAS_TITLE
+
+
+def test_render_uses_provided_title():
+    pages, graph = {}, {"nodes": [], "edges": [], "communities": []}
+    prov = {k: 0 for k in ("literature", "concepts", "thinkers", "debates", "themes", "answers")}
+    prov["last_analysis"] = ""
+    front = {"themes": [], "debates": [], "clusters": []}
+    html = render(pages, graph, None, "", front, prov, {}, title="A Different Atlas")
+    assert "<title>A Different Atlas</title>" in html
+    assert "<h1>A Different Atlas</h1>" in html
+    assert "Other Minds" not in html
+
+
+def test_render_defaults_to_constant_without_title():
+    pages, graph = {}, {"nodes": [], "edges": [], "communities": []}
+    prov = {k: 0 for k in ("literature", "concepts", "thinkers", "debates", "themes", "answers")}
+    prov["last_analysis"] = ""
+    front = {"themes": [], "debates": [], "clusters": []}
+    html = render(pages, graph, None, "", front, prov, {})
+    assert f"<h1>{ATLAS_TITLE}</h1>" in html

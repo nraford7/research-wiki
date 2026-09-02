@@ -149,4 +149,9 @@ The source documents are read-only. No command ever writes to, moves, or deletes
 
 ## Setup note
 
-The skill is wired to one author's paths (`/Users/noahraford/magic/…`). To reuse it, change the paths at the top of the Python scripts and in `SKILL.md` and `references/`. No API keys live in the code.
+The skill ships wired to one author's paths (`/Users/noahraford/magic/…`), but they are the *defaults*, not hardcoded assumptions:
+
+- **The procedures** (`SKILL.md` + `references/`) reference two roots symbolically, `$WIKI_ROOT` and `$SOURCES_ROOT`. Retarget the whole skill by editing the two values in the **Roots** table at the top of `SKILL.md` — nothing else in the procedures hardcodes a path.
+- **The Python scripts** all take `--wiki` (and derive `<wiki>/literature-html`, `<wiki>/.literature-text`, etc. from it); `build_wiki_html.py` also takes `--title` to set the atlas masthead (or reads `title:` from the wiki's `about.md`). The path constants at the top of each script are only the defaults.
+
+No API keys live in the code.
