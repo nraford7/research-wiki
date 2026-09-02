@@ -8,14 +8,17 @@ searchable `.literature-text/` RAG corpus). Ingest builds the wiki PAGES from th
 source TEXT but does NOT populate this layer — this script does, and it scrubs two
 known deeper-research export defects so they never reach the wiki:
 
-  1. the `Research Bible` kicker stamp  -> `Research Report`  (terminology guard;
-     the word "bible" is banned in this project — see magic/CLAUDE.md)
+  1. the `Research Bible` deliverable stamp  -> `Research Report`  (terminology guard;
+     the old deliverable name "Research Bible" is banned in this project — see
+     magic/CLAUDE.md). Scrubbed case-preservingly and in both spaced and hyphenated
+     forms (`Research Bible`, `research-bible`), so a lowercase CSS/id leak is fixed too.
   2. the leaked `<section id="...shared-brief-for-all-section-subagents...">` block
      (the pipeline's internal per-section briefing, mis-rendered as content) and its
      stray table-of-contents `<li><a href="#...shared-brief...">` anchor.
 
-It refuses to write if the word "bible" survives the scrub (fail loud, never publish
-the banned term).
+It refuses to write if the deliverable term (`research[-]?bible`) survives the scrub
+(fail loud, never publish the banned name). The bare English word "bible" in prose or
+in a cited source title is content, not the deliverable name, and is left untouched.
 
 USAGE
     python3 publish_source_html.py --source-dir "<chN-qN dir>" [--wiki <wiki>]
@@ -34,9 +37,28 @@ BRIEF_SECTION = re.compile(
 BRIEF_TOC = re.compile(
     r'<li><a href="#section-shared-brief-for-all-section-subagents[^"]*">.*?</a></li>', re.S)
 
+# The banned deliverable name, spaced or hyphenated, any case: "Research Bible",
+# "research-bible" (a leaked CSS class/id), "RESEARCH BIBLE". NOT the bare word
+# "bible" — that is legitimate content (prose, cited source titles) and is left alone.
+DELIVERABLE = re.compile(r"(research)([\s\-]?)(bible)", re.I)
+
+
+def _match_case(word, template):
+    """Return `word` recased to match `template` (UPPER / Title / lower)."""
+    if template.isupper():
+        return word.upper()
+    if template[:1].isupper():
+        return word[:1].upper() + word[1:]
+    return word
+
+
+def _deliverable_to_report(m):
+    # Keep "research" and the separator verbatim; recase "report" like the "bible" it replaces.
+    return m.group(1) + m.group(2) + _match_case("report", m.group(3))
+
 
 def scrub(html):
-    html = html.replace("Research Bible", "Research Report")
+    html = DELIVERABLE.sub(_deliverable_to_report, html)
     html = BRIEF_SECTION.sub("", html)
     html = BRIEF_TOC.sub("", html)
     return html
@@ -52,8 +74,8 @@ def publish_one(source_dir, wiki):
         src = cands[0]
     with open(src, encoding="utf-8") as fh:
         html = scrub(fh.read())
-    if re.search(r"bible", html, re.I):
-        return (slug, "REFUSED-bible-survived")  # never publish the banned term
+    if DELIVERABLE.search(html):
+        return (slug, "REFUSED-bible-survived")  # never publish the banned deliverable name
     out = os.path.join(wiki, "literature-html", f"{slug}.html")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
