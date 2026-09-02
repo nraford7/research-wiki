@@ -30,14 +30,14 @@ The source documents are never changed. The skill only reads them.
 
 - **Claude Code.** research-wiki is a skill you run inside it.
 - **Your source documents.** One folder per report, as HTML or markdown. A separate research pipeline makes these. research-wiki only reads them.
-- **Python** with a few libraries: `markdown`, `beautifulsoup4`, `networkx`, `PyYAML` (and `pytest` to run the tests).
+- **Python** with a few libraries: `markdown`, `beautifulsoup4`, `networkx`, `numpy`, `PyYAML` (and `pytest` to run the tests).
 - **Two optional helper skills.** The wiki still works without them, with less polish:
   - **semantic-search** — powers the atlas search box and the "ask the corpus" answers. It reads an `OPENAI_API_KEY` from your environment or `~/.env`.
   - **graphify** — groups the ideas into colored clusters on the map.
 
 Install the Python parts:
 ```bash
-pip install markdown beautifulsoup4 networkx pyyaml pytest graphifyy
+pip install markdown beautifulsoup4 networkx numpy pyyaml pytest graphifyy
 ```
 
 ---

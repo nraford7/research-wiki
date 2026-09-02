@@ -3,12 +3,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from extract_bibles import (  # noqa: E402
+from extract_sources import (  # noqa: E402
     extract_all, extract_anchors, html_to_markdown, resection_html, slugify,
 )
 
 
-def test_slugify_matches_bible_scheme():
+def test_slugify_matches_source_anchor_scheme():
     assert slugify("The paradox of wu wei and its proposed resolutions") == \
         "section-the-paradox-of-wu-wei-and-its-proposed-resolutions"
     assert slugify("Wu wei in the brain: Slingerland's cognitive-science") == \
