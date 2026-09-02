@@ -285,6 +285,33 @@ def _hook(body):
     return ""
 
 
+def _underlying_source_count(wiki_dir):
+    """Total primary sources behind the literature reviews. Each published report records
+    its own count three ways; sum the best signal per file (regenerates on rebuild)."""
+    import glob as _glob
+    tot = 0
+    for f in _glob.glob(os.path.join(wiki_dir, "literature-html", "*.html")):
+        try:
+            html = open(f, encoding="utf-8").read()
+        except OSError:
+            continue
+        m = re.search(r'([\d,]+)\s+unique sources retrieved', html, re.I)
+        if m:
+            tot += int(m.group(1).replace(",", "")); continue
+        m = re.search(r'Deduplicated across .*?\((\d[\d,]*)\s*(?:→|-&gt;|-\>|&rarr;|&#8594;)\s*(\d[\d,]*)\)', html)
+        if m:
+            tot += int(m.group(2).replace(",", "")); continue
+        h = re.search(r'id="(?:section-master-)?bibliography-title"', html)
+        if h:
+            seg = re.split(r'</section>', html[h.end():], maxsplit=1)[0]
+            n = len(re.findall(r'<li', seg))
+            if n:
+                tot += n; continue
+        cites = set(re.findall(r'\[([A-Z][A-Za-z’\'-]+(?:\s+(?:et al\.|and|&)\s+[A-Z][A-Za-z’\'-]+)?),?\s+\d{4}[a-z]?\]', html))
+        tot += len(cites)
+    return tot
+
+
 def provenance(pages, wiki_dir):
     counts = Counter(p["type"] for p in pages.values())
     last = ""
@@ -299,6 +326,7 @@ def provenance(pages, wiki_dir):
         "literature": counts.get("literature", 0), "concepts": counts.get("concept", 0),
         "thinkers": counts.get("thinker", 0), "debates": counts.get("debate", 0),
         "themes": counts.get("theme", 0), "answers": counts.get("answer", 0),
+        "total_sources": _underlying_source_count(wiki_dir),
         "last_analysis": last,
     }
 
@@ -381,16 +409,25 @@ ATLAS_CSS = """
 #atlas-graph circle.dim{opacity:.12;}
 #atlas-graph circle.neighbor{opacity:1;stroke:var(--ink);stroke-width:1.6;}
 #atlas-graph circle.active{stroke:var(--ink);stroke-width:2.5;}
+/* a neighbour of the selected node that sits OUTSIDE the active type filter:
+   faintly outlined + clickable so you can hop out of the current lens */
+#atlas-graph circle.ghost{fill-opacity:.16;stroke:var(--muted);stroke-width:1.4;stroke-opacity:.7;}
 #atlas-graph line.edge-active{stroke:var(--ink);stroke-opacity:.8;stroke-width:1.4;}
 #atlas-graph line.edge-dim{stroke-opacity:.06;}
+#atlas-graph line.edge-ghost{stroke:var(--muted);stroke-opacity:.3;stroke-dasharray:2.5 3;}
+#atlas-graph line.edge-hidden{display:none;}
 #atlas-graph text{font-family:var(--sans);paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round;fill:var(--ink);pointer-events:none;vector-effect:non-scaling-stroke;}
 #atlas-graph text.cluster-title{font-weight:700;fill:var(--accent);opacity:.92;}
 #atlas-graph text.node-label.sel{font-weight:700;}
 #atlas-graph text.node-label.nbr{font-weight:600;fill:var(--muted);}
+#atlas-graph text.node-label.ghost{font-weight:600;fill:var(--muted);opacity:.55;}
 #graph-clear{position:absolute;top:8px;right:8px;z-index:5;font:600 .62rem var(--sans);letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);padding:4px 9px;cursor:pointer;border-radius:2px;}
 #graph-clear:hover{border-color:var(--ink);}
 .legend{padding:8px 10px;border-top:1px solid var(--line);font:600 .68rem/1.5 var(--sans);max-height:26%;overflow:auto;flex:none;}
-.legend .lg{display:flex;align-items:center;gap:7px;cursor:pointer;padding:1px 0;}
+.legend .lg{display:flex;align-items:center;gap:7px;cursor:pointer;padding:1px 0;transition:opacity .12s;}
+.legend.previewing .lg{opacity:.3;}
+.legend.previewing .lg.preview{opacity:1;}
+.legend .lg.selected{color:var(--accent);}
 .legend .sw{width:11px;height:11px;border-radius:50%;flex:none;}
 .typefilter{padding:6px 10px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;flex:none;}
 .typefilter button{font:600 .64rem var(--sans);letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line);background:var(--paper);color:var(--muted);padding:3px 8px;cursor:pointer;border-radius:2px;}
@@ -399,6 +436,11 @@ ATLAS_CSS = """
 .reader{overflow:auto;padding:40px clamp(24px,5vw,72px) 100px;}
 .reader .doc{max-width:760px;margin:0 auto;}
 .reader .kicker{font:700 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
+.reader .crumbs{font:600 .72rem var(--sans);letter-spacing:.02em;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:7px;align-items:center;opacity:.9;}
+.reader .crumbs .crumb{color:var(--accent);cursor:pointer;text-decoration:none;}
+.reader .crumbs .crumb:hover{text-decoration:underline;}
+.reader .crumbs .crumb-sep{opacity:.4;}
+.reader .crumbs .crumb-cur{opacity:.65;}
 .reader .doc-actions{margin:0 0 20px;}
 .reader .read-full{display:inline-block;font:700 .68rem var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--paper);background:var(--accent);border:1px solid var(--accent);padding:7px 13px;border-radius:3px;text-decoration:none;}
 .reader .read-full:hover{opacity:.85;}
@@ -471,7 +513,7 @@ def _index_html(pages):
                        key=lambda t: t[1].lower())
         if not items:
             continue
-        parts.append(f'<div class="index-group"><h3>{label} ({len(items)})</h3><ul>')
+        parts.append(f'<div class="index-group" id="idx-{typ}"><h3>{label} ({len(items)})</h3><ul>')
         for k, t in items:
             parts.append(f'<li><a data-page="{k}">{_html.escape(t)}</a></li>')
         parts.append('</ul></div>')
@@ -512,7 +554,7 @@ def _front_door_html(about_html, front, unresolved_html, prov):
         parts.append('</p>')
     parts.append(
         '<div class="howto"><strong>How to use this</strong><ul>'
-        '<li><strong>Graph</strong> tab (left): click a node to open it and light up its neighbours; <em>Clear selection</em> resets and shows the cluster names. Topic chips isolate one kind — click more to add them back.</li>'
+        '<li><strong>Graph</strong> tab (left): click a node to open it and light up its neighbours; <em>Clear selection</em> resets. Hover a cluster name in the legend to preview it, click to lock it in (click again to release). Topic chips isolate one kind — click more to add them back.</li>'
         '<li><strong>Index</strong> tab (left): browse every entry grouped by kind; filter as you type.</li>'
         '<li><strong>Search</strong> (top) finds any concept, thinker, or idea by name or meaning.</li>'
         '<li>Inside a page, follow the <em>See also</em> links to walk the ideas.</li>'
@@ -609,10 +651,11 @@ def render(pages, graph, about_html, unresolved_html, front, prov, community_lab
         for cid in graph["communities"])
     types = sorted({n["type"] for n in graph["nodes"]})
     typefilter = "".join(f'<button data-type="{t}">{t}</button>' for t in types)
-    prov_line = " · ".join([
-        f'{prov["literature"]} sources', f'{prov["concepts"]} concepts',
-        f'{prov["thinkers"]} thinkers', f'{prov["debates"]} debates',
-        f'{prov["themes"]} themes', f'{prov["answers"]} answers']
+    _prov_parts = [(prov["literature"], "lit reviews"), (prov.get("total_sources", 0), "sources"),
+                   (prov["concepts"], "concepts"), (prov["thinkers"], "thinkers"),
+                   (prov["debates"], "debates"), (prov["themes"], "themes"),
+                   (prov["answers"], "answers")]
+    prov_line = " · ".join([f'{n:,} {lbl}' for n, lbl in _prov_parts if n]
         + ([f'updated {prov["last_analysis"]}'] if prov["last_analysis"] else []))
     svg = _svg(graph)
     index_html = _index_html(pages)
@@ -691,7 +734,15 @@ function renderPage(key){
     const href = 'literature-html/'+key.slice(11)+'.html';
     head = '<p class="doc-actions"><a class="read-full" href="'+href+'" target="_blank" rel="noopener">Read full document ↗</a></p>';
   }
-  reader.innerHTML = '<div class="doc"><p class="kicker">'+kicker+
+  const TYPELABEL={concept:'Concepts',thinker:'Thinkers',debate:'Debates',theme:'Themes',literature:'Sources',cluster:'Topic clusters'};
+  const tlabel = isCluster?'Topic clusters':(isLit?'Sources':(TYPELABEL[p.type]||esc(p.type)));
+  const tcrumb = isCluster
+      ? '<a class="crumb" data-crumb="graph">'+tlabel+'</a>'
+      : '<a class="crumb" data-crumb="type" data-type="'+esc(p.type)+'">'+tlabel+'</a>';
+  const crumbs = '<nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" data-crumb="home">Atlas</a>'
+      +'<span class="crumb-sep">›</span>'+tcrumb
+      +'<span class="crumb-sep">›</span><span class="crumb-cur">'+esc(p.title)+'</span></nav>';
+  reader.innerHTML = '<div class="doc">'+crumbs+'<p class="kicker">'+kicker+
     (p.status?'<span class="status-chip">'+esc(p.status)+'</span>':'')+'</p>'+head+p.html+'</div>';
   reader.scrollTop=0;
   // a cluster page is a lens, not a graph node: light up its community instead of selecting a node
@@ -715,6 +766,13 @@ function openEntry(key, anchor){
 }
 // one delegated listener handles every internal link (reader, index, search, clusters)
 document.addEventListener('click', e=>{
+  const cr = e.target.closest('a[data-crumb]');
+  if(cr){ e.preventDefault();
+    const k=cr.dataset.crumb;
+    if(k==='home'){ showFront(); if(typeof isMobile==='function'&&isMobile()&&typeof mobileShow==='function') mobileShow('read'); }
+    else if(k==='graph'){ setView('graph'); if(typeof isMobile==='function'&&isMobile()&&typeof mobileShow==='function') mobileShow('graph'); }
+    else if(k==='type'){ setView('index'); const g=document.getElementById('idx-'+cr.dataset.type); if(g) g.scrollIntoView({block:'start'}); if(typeof isMobile==='function'&&isMobile()&&typeof mobileShow==='function') mobileShow('index'); }
+    return; }
   const p = e.target.closest('a[data-page]');
   if(p){ e.preventDefault(); openEntry(p.dataset.page, p.dataset.anchor); return; }
   const c = e.target.closest('a[data-community]');
@@ -746,55 +804,109 @@ function updateLabelSizes(){ const s=labelScale();
 function centroid(ms){ let sx=0,sy=0,n=0; ms.forEach(c=>{ if(!vis(c))return; sx+=+c.getAttribute('cx'); sy+=+c.getAttribute('cy'); n++; }); return n?[sx/n,sy/n]:null; }
 function showClusterTitles(){ clearLabels();
   Object.keys(commMembers).forEach(cid=>{ const c=centroid(commMembers[cid]); if(c) addLabel(c[0],c[1],commLabel[cid]||('Community '+cid),'cluster-title',17); }); }
-function clearGraph(){ circles.forEach(c=>c.classList.remove('active','dim','neighbor'));
-  lines.forEach(l=>l.classList.remove('edge-active','edge-dim')); }
-function setDefault(){ selState={mode:'default'}; clearGraph(); showClusterTitles(); clearBtn.hidden=true; }
+// clearGraph strips selection classes AND restores each circle's display to whatever
+// the active type filter dictates (so ghost nodes force-shown by a prior selection get
+// re-hidden before the next paint).
+function clearGraph(){ circles.forEach(c=>c.classList.remove('active','dim','neighbor','ghost'));
+  applyFilterDisplay();
+  lines.forEach(l=>l.classList.remove('edge-active','edge-dim','edge-ghost','edge-hidden')); }
+// default = quiet graph: no labels, no cluster titles (labels are off until you act)
+function setDefault(){ selState={mode:'default'}; clearGraph(); clearLabels(); clearBtn.hidden=true; setLegendPreview(null); syncLegendSelection(); }
 function setActive(key){
   const hit = key && circleByKey[key];
   if(!hit){ setDefault(); return; }
   selState={mode:'node',key:key};
   clearGraph(); clearLabels();
   const nb = adj[key] || new Set();
+  const filtered = activeTypes!==null;
+  const inFilter = c => !filtered || activeTypes.has(c.dataset.type);
   circles.forEach(c=>{ const k=c.dataset.page;
-    if(k===key) c.classList.add('active'); else if(nb.has(k)) c.classList.add('neighbor'); else c.classList.add('dim'); });
+    if(k===key){ c.classList.add('active'); c.style.display=''; }
+    else if(nb.has(k)){
+      if(inFilter(c)){ c.classList.add('neighbor'); }
+      else { c.classList.add('ghost'); c.style.display=''; } // out-of-filter neighbour → clickable ghost
+    } else { c.classList.add('dim'); }
+  });
   lines.forEach(l=>{ const s=l.dataset.s,t=l.dataset.t;
-    if((s===key&&nb.has(t))||(t===key&&nb.has(s))) l.classList.add('edge-active'); else l.classList.add('edge-dim'); });
+    const touches = (s===key)||(t===key);
+    if(touches){
+      const oc = circleByKey[s===key?t:s];
+      if(oc && inFilter(oc)) l.classList.add('edge-active');   // edge to an in-filter neighbour
+      else l.classList.add('edge-ghost');                      // edge out to a ghost neighbour
+    } else if(filtered){ l.classList.add('edge-hidden'); }     // hide the web when a filter is on
+    else { l.classList.add('edge-dim'); }
+  });
   const sc=circleByKey[key], r=+sc.getAttribute('r');
   // neighbours first, selected label LAST so it always paints on top
-  nb.forEach(k=>{ const c=circleByKey[k]; if(c&&vis(c)) addLabel(+c.getAttribute('cx'), +c.getAttribute('cy')-(+c.getAttribute('r'))-3, trunc(c.dataset.label,24), 'node-label nbr', 11); });
+  nb.forEach(k=>{ const c=circleByKey[k]; if(c&&vis(c)){
+    const cls = c.classList.contains('ghost') ? 'node-label ghost' : 'node-label nbr';
+    addLabel(+c.getAttribute('cx'), +c.getAttribute('cy')-(+c.getAttribute('r'))-3, trunc(c.dataset.label,24), cls, 11); } });
   addLabel(+sc.getAttribute('cx'), +sc.getAttribute('cy')-r-6, trunc(sc.dataset.label,44), 'node-label sel', 21);
-  clearBtn.hidden=false;
+  clearBtn.hidden=false; setLegendPreview(null); syncLegendSelection();
 }
-function highlightCommunity(cid){
-  selState={mode:'community',cid:cid};
+// paint one community's highlight (dim the rest, show its title) without touching selState
+function paintCommunity(cid){
   clearGraph(); clearLabels();
   circles.forEach(c=> c.classList.toggle('dim', +c.dataset.community!==cid));
   const c=centroid(commMembers[cid]||[]); if(c) addLabel(c[0],c[1],commLabel[cid]||('Community '+cid),'cluster-title',17);
-  clearBtn.hidden=false;
 }
+function highlightCommunity(cid){ selState={mode:'community',cid:cid}; paintCommunity(cid); clearBtn.hidden=false; syncLegendSelection(); }
 function refreshGraph(){ if(selState.mode==='node') setActive(selState.key);
-  else if(selState.mode==='community') highlightCommunity(selState.cid); else showClusterTitles(); }
+  else if(selState.mode==='community') highlightCommunity(selState.cid);
+  else { clearGraph(); clearLabels(); } }
 clearBtn.addEventListener('click', setDefault);
 // node interactions
 circles.forEach(c=>{
-  c.addEventListener('click',()=>openEntry(c.dataset.page));
+  c.addEventListener('click',()=>{
+    // clicking a node OUTSIDE the active filter (a ghost) switches the lens to that
+    // node's type — the old chip goes dark, the new one lights up, so it's clear you moved.
+    if(activeTypes!==null && !activeTypes.has(c.dataset.type)){
+      activeTypes=new Set([c.dataset.type]); applyFilterDisplay(); updateFilterButtons();
+    }
+    openEntry(c.dataset.page);
+  });
   c.addEventListener('mousemove',e=>{ tip.textContent=c.dataset.label; tip.style.opacity=1;
     tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; });
   c.addEventListener('mouseleave',()=>{ tip.style.opacity=0; });
 });
-document.querySelectorAll('.legend .lg').forEach(l=>l.addEventListener('click',()=>openCluster(+l.dataset.community)));
+// ---- cluster legend: hover previews, click locks/unlocks ----
+const legendEl=document.querySelector('.legend');
+const legendItems=[...document.querySelectorAll('.legend .lg')];
+function syncLegendSelection(){ legendItems.forEach(l=>l.classList.toggle('selected',
+  selState.mode==='community' && selState.cid===+l.dataset.community)); }
+// fade the other legend names + emphasise `item` (pass null to clear the fade)
+function setLegendPreview(item){ legendEl.classList.toggle('previewing', !!item);
+  legendItems.forEach(l=>l.classList.toggle('preview', l===item)); }
+// while a cluster is LOCKED (clicked-selected), rollover previews are disabled — the
+// lock holds until you click it again to release or click another cluster.
+const clusterLocked=()=>selState.mode==='community';
+legendItems.forEach(l=>{
+  const cid=+l.dataset.community;
+  l.addEventListener('mouseenter',()=>{ if(drag||clusterLocked()) return;
+    setLegendPreview(l); paintCommunity(cid); });
+  l.addEventListener('mouseleave',()=>{ if(drag||clusterLocked()) return;
+    setLegendPreview(null); refreshGraph(); });
+  l.addEventListener('click',()=>{
+    if(selState.mode==='community' && selState.cid===cid){ setDefault(); }   // release
+    else { openCluster(cid); setLegendPreview(l); }                          // lock (persist the fade)
+    syncLegendSelection();
+  });
+});
 // topic chips: default shows ALL; first click isolates that type; extra clicks
 // add types back in; clicking an active type removes it (empty -> back to all)
 let activeTypes=null; // null = all types shown
-function applyTypeFilter(){
+// set each circle's display purely from the filter (no selection logic)
+function applyFilterDisplay(){
   circles.forEach(c=>{ c.style.display = (activeTypes===null||activeTypes.has(c.dataset.type))?'':'none'; });
+}
+function updateFilterButtons(){
   document.querySelectorAll('.typefilter button').forEach(b=>{
     const on = activeTypes!==null && activeTypes.has(b.dataset.type);
     b.classList.toggle('on', on);
     b.classList.toggle('off', activeTypes!==null && !on);
   });
-  refreshGraph();
 }
+function applyTypeFilter(){ applyFilterDisplay(); updateFilterButtons(); refreshGraph(); }
 document.querySelectorAll('.typefilter button').forEach(b=>b.addEventListener('click',()=>{
   const t=b.dataset.type;
   if(activeTypes===null) activeTypes=new Set([t]);

@@ -230,3 +230,28 @@ def test_render_defaults_to_constant_without_title():
     front = {"themes": [], "debates": [], "clusters": []}
     html = render(pages, graph, None, "", front, prov, {})
     assert f"<h1>{ATLAS_TITLE}</h1>" in html
+
+
+# -- atlas: underlying source count (ghost-graph PR) -------------------------
+
+def test_underlying_source_count_sums_best_signal_per_file(tmp_path):
+    from build_wiki_html import _underlying_source_count
+    hd = tmp_path / "literature-html"
+    hd.mkdir()
+    # (1) explicit "N unique sources retrieved" wins
+    (hd / "a.html").write_text("<p>1,234 unique sources retrieved for this review</p>")
+    # (2) dedup arrow -> takes the post-dedup number (second group)
+    (hd / "b.html").write_text("<p>Deduplicated across slices (900 → 300)</p>")
+    # (3) bibliography section -> count <li> entries
+    (hd / "c.html").write_text(
+        '<section><h2 id="bibliography-title">Bibliography</h2>'
+        '<li>one</li><li>two</li></section><section>next</section>')
+    # (4) fallback -> count of UNIQUE [Author, YYYY] citations (repeats collapse)
+    (hd / "d.html").write_text("As [Smith, 2020] and [Jones, 2019] and again [Smith, 2020].")
+    # 1234 + 300 + 2 + 2 = 1538
+    assert _underlying_source_count(str(tmp_path)) == 1538
+
+
+def test_underlying_source_count_zero_without_html_dir(tmp_path):
+    from build_wiki_html import _underlying_source_count
+    assert _underlying_source_count(str(tmp_path)) == 0
