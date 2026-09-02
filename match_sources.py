@@ -14,9 +14,8 @@ import re
 import subprocess
 import sys
 
-WIKI = "/Users/noahraford/magic/wiki"
-CORPUS = os.path.join(WIKI, ".literature-text")
-SEARCH = os.path.expanduser("~/.claude/skills/semantic-search/search.py")
+WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+SEARCH_DEFAULT = os.path.expanduser("~/.claude/skills/semantic-search/search.py")
 
 
 def nearest_anchor(md_text, line, anchors_b):
@@ -34,16 +33,20 @@ def nearest_anchor(md_text, line, anchors_b):
     return None, None
 
 
-def _query(source, q):
-    out = subprocess.run(
-        [sys.executable, "-B", SEARCH, "--cwd", CORPUS, "--in", f"{source}.md",
+def _query(source, q, corpus, search):
+    proc = subprocess.run(
+        [sys.executable, "-B", search, "--cwd", corpus, "--in", f"{source}.md",
          "--json", q, "--top", "5"],
-        capture_output=True, text=True).stdout
-    hits = [json.loads(l) for l in out.splitlines() if l.strip().startswith("{")]
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or proc.stdout.strip() or "no output"
+        raise RuntimeError(f"semantic-search helper failed (exit {proc.returncode}) "
+                           f"querying {source}: {detail}")
+    hits = [json.loads(l) for l in proc.stdout.splitlines() if l.strip().startswith("{")]
     return hits[0] if hits else None
 
 
-def match_page(page_path, anchors):
+def match_page(page_path, anchors, corpus, search):
     raw = open(page_path, encoding="utf-8").read()
     fm = re.match(r"^---\n(.*?)\n---\n(.*)$", raw, re.S)
     if not fm:
@@ -56,11 +59,11 @@ def match_page(page_path, anchors):
     query = (title + " " + re.sub(r"\s+", " ", re.sub(r"^#.*$", "", body, flags=re.M))).strip()[:600]
     src = {}
     for b in literature:
-        hit = _query(b, query)
+        hit = _query(b, query, corpus, search)
         if not hit:
             print(f"  [match] {os.path.basename(page_path)}: no corpus hit for {b} (→ whole-source fallback)")
             continue
-        md = open(os.path.join(CORPUS, f"{b}.md"), encoding="utf-8").read()
+        md = open(os.path.join(corpus, f"{b}.md"), encoding="utf-8").read()
         _, anc = nearest_anchor(md, int(hit.get("line", 1)), anchors.get(b, []))
         if anc:
             src[b] = anc
@@ -84,10 +87,10 @@ def write_sources(page_path, sources):
     open(page_path, "w", encoding="utf-8").write(fm.group(1) + front + fm.group(3) + fm.group(4))
 
 
-def _targets(only):
+def _targets(only, wiki):
     pages = []
     for d in ("concepts", "thinkers"):
-        for p in sorted(glob.glob(os.path.join(WIKI, d, "*.md"))):
+        for p in sorted(glob.glob(os.path.join(wiki, d, "*.md"))):
             txt = open(p, encoding="utf-8").read()
             if only:
                 if os.path.basename(p)[:-3] in only:
@@ -100,11 +103,30 @@ def _targets(only):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Write concept→source-section pointers.")
     ap.add_argument("--only", nargs="*", help="specific slugs (default: all overview:true pages)")
+    ap.add_argument("--wiki", default=WIKI_DEFAULT,
+                    help="wiki root; the corpus is <wiki>/.literature-text")
+    ap.add_argument("--search", default=SEARCH_DEFAULT,
+                    help="path to the semantic-search helper (search.py)")
     a = ap.parse_args(argv)
-    anchors = json.load(open(os.path.join(CORPUS, "anchors.json"), encoding="utf-8"))
-    pages = _targets(set(a.only) if a.only else None)
+    corpus = os.path.join(a.wiki, ".literature-text")
+    if not os.path.isfile(a.search):
+        print(f"[match] error: semantic-search helper not found at {a.search} "
+              f"(pass --search); nothing matched", file=sys.stderr)
+        return 1
+    anchors_path = os.path.join(corpus, "anchors.json")
+    if not os.path.isfile(anchors_path):
+        print(f"[match] error: {anchors_path} not found; run extract_sources.py "
+              f"--html-dir {os.path.join(a.wiki, 'literature-html')} --out {corpus} "
+              f"--resection first", file=sys.stderr)
+        return 1
+    anchors = json.load(open(anchors_path, encoding="utf-8"))
+    pages = _targets(set(a.only) if a.only else None, a.wiki)
     for p in pages:
-        src = match_page(p, anchors)
+        try:
+            src = match_page(p, anchors, corpus, a.search)
+        except RuntimeError as e:
+            print(f"[match] error: {e}", file=sys.stderr)
+            return 1
         if src:
             write_sources(p, src)
         print(f"[match] {os.path.basename(p)}: {len(src)} deep-link(s) {src or ''}")
