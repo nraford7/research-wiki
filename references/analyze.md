@@ -159,8 +159,30 @@ cross-linked. Mechanics that scale (used for 250 then 400 pages):
   (collect the drafting agents' returns into one `{page: lead}` JSON, then run it once).
   Then run `match_sources.py` (deep-links) and **strip any dangling `[[links]]` to plain
   text** (agents guess slugs; this guarantees clean links).
-- **Skip pages that already have `overview: true`.** Delta `analyze` does NOT enrich — a
-  page may still gain `## In` sections from later ingests, which would stale its narrative.
+- **Enrich new pages, AND reconcile the related established pages (MANDATORY — this is the
+  whole point of a wiki).** A freshly-enriched *new* page is not enough. When new sources
+  arrive, the pages they **link to, relate to, incorporate, debate, or argue with** must
+  absorb that material, or the wiki decays into a pile of disconnected documents with new
+  evidence stranded in `## In <source>` sections below stale synthesis. So the enrichment
+  set is BOTH:
+  1. **New pages** — ingest-level pages lacking `overview: true` (fresh leads, as above).
+  2. **Related established pages** — pages that ALREADY have `overview: true` but whose
+     neighbourhood this pass changed: **(a)** any page that gained a new `## In <source>`
+     section from this pass's ingests, and **(b)** any already-enriched page `[[wikilinked]]`
+     from the newly-created/updated pages, debates, or themes. Re-draft these with the same
+     drafting agents and splice with **`enrich_splice.py --force`** (override the
+     skip-if-`overview:true` guard). Each re-draft MUST weave the new evidence into the
+     existing lead and add cross-links to the new pages/debates/themes — never leave a new
+     `## In` section stranded below an unchanged synthesis.
+
+  Compute the reconcile set deterministically before drafting: **(a)** `grep -l` for
+  `## In <each-new-source>` across `concepts/` + `thinkers/`; **(b)** collect every
+  `[[type/slug]]` target appearing in the new/updated pages + new debates + new themes,
+  intersect with existing `overview: true` pages. Reconcile set = (a) ∪ (b) minus the new
+  pages. If it is very large, cap by link-degree to the new material and `log()` what was
+  dropped — never silently skip related pages.
+- Delta `analyze` still does NOT enrich; only `--full` runs this pass (both the new-page and
+  the reconcile halves).
 
 This is the pass that brings a freshly-ingested chapter to the depth of the rest of the wiki.
 
