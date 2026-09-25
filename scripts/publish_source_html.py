@@ -10,7 +10,7 @@ known deeper-research export defects so they never reach the wiki:
 
   1. the `Research Bible` deliverable stamp  -> `Research Report`  (terminology guard;
      the old deliverable name "Research Bible" is banned in this project — see
-     magic/CLAUDE.md). Scrubbed case-preservingly and in both spaced and hyphenated
+     the project CLAUDE.md). Scrubbed case-preservingly and in both spaced and hyphenated
      forms (`Research Bible`, `research-bible`), so a lowercase CSS/id leak is fixed too.
   2. the leaked `<section id="...shared-brief-for-all-section-subagents...">` block
      (the pipeline's internal per-section briefing, mis-rendered as content) and its
@@ -29,8 +29,10 @@ import glob
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wiki_roots import default_wiki, require_wiki  # noqa: E402
 
-DEFAULT_WIKI = "/Users/noahraford/magic/wiki"
+DEFAULT_WIKI = default_wiki()
 BRIEF_SECTION = re.compile(
     r'<section class="research-section" id="section-shared-brief-for-all-section-subagents[^>]*>.*?</section>',
     re.S)
@@ -90,6 +92,7 @@ def main():
     g.add_argument("--all", metavar="PARENT", help="publish every chN-qN dir under PARENT")
     ap.add_argument("--wiki", default=DEFAULT_WIKI)
     a = ap.parse_args()
+    a.wiki = require_wiki(a.wiki)
 
     if a.source_dir:
         dirs = [a.source_dir]

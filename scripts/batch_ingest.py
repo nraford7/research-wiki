@@ -31,7 +31,7 @@ USAGE
                  DONE
     --json   machine-readable plan (all sources + statuses + next action)
     --every  delta-analyze cadence (default 3)
-    --wiki   wiki path (default /Users/noahraford/magic/wiki)
+    --wiki   wiki path (default: found from the current folder)
 
 STATUSES
     not-ingested     no matching ingest line in the log
@@ -45,8 +45,10 @@ import hashlib
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wiki_roots import default_wiki, require_wiki  # noqa: E402
 
-DEFAULT_WIKI = "/Users/noahraford/magic/wiki"
+DEFAULT_WIKI = default_wiki()
 EMPTY_SHA12 = "e3b0c44298fc"  # sha256 of empty input -> zero content files
 
 TIMESTAMP_SUFFIX_RE = re.compile(r"-\d{8}t\d+z$", re.IGNORECASE)
@@ -380,6 +382,7 @@ def main():
                     help="optional regex to restrict which source dir NAMES qualify "
                          r"(e.g. 'ch\d+-q\d+' for the book corpus only); default: any name")
     args = ap.parse_args()
+    args.wiki = require_wiki(args.wiki)
 
     if not os.path.isdir(args.research_dir):
         print(f"error: not a directory: {args.research_dir}", file=sys.stderr)

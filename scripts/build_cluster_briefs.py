@@ -15,6 +15,9 @@ Writes <out>/<NN>.md, one per community, containing the label, the top-degree me
 pages (exact keys), and the full debate/theme key list the agent may also link.
 """
 import argparse, importlib.util, os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wiki_roots import default_wiki, require_wiki  # noqa: E402
 
 def _load_bw(wiki_skill_dir):
     p = os.path.join(wiki_skill_dir, "build_wiki_html.py")
@@ -23,10 +26,11 @@ def _load_bw(wiki_skill_dir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--wiki", default="/Users/noahraford/magic/wiki")
+    ap.add_argument("--wiki", default=default_wiki())
     ap.add_argument("--out", default="/tmp/cluster_briefs")
     ap.add_argument("--top", type=int, default=25)
     a = ap.parse_args()
+    a.wiki = require_wiki(a.wiki)
     bw = _load_bw(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     pages = bw.load_pages(a.wiki, {})
     graph = bw.load_graph(os.path.join(a.wiki, "graphify-out", "graph.json"), pages, lambda *x: None)

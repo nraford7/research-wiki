@@ -16,8 +16,9 @@ import sys
 from collections import Counter
 
 import markdown
+from wiki_roots import default_wiki, require_wiki
 
-WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+WIKI_DEFAULT = default_wiki()
 PAGE_DIRS = ("literature", "concepts", "thinkers", "debates", "themes", "answers")
 
 # ---------------------------------------------------------------- parsing ----
@@ -1235,6 +1236,7 @@ def main(argv=None):
                          "(default: resolve from about.md, else the built-in fallback)")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
+    args.wiki = require_wiki(args.wiki)
     out = args.out or os.path.join(args.wiki, "wiki.html")
     try:
         problems = build_all(args.wiki, out, quiet=args.quiet, title=args.title)

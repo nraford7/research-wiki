@@ -16,7 +16,7 @@ It SKIPS pages that already have `overview: true` (idempotent; never clobbers a 
 unless --force. Pages it can't find or splice are reported and left untouched.
 
 USAGE
-    python3 enrich_splice.py --wiki /Users/noahraford/magic/wiki --input drafts.json [--date YYYY-MM-DD] [--force]
+    python3 enrich_splice.py --wiki <wiki> --input drafts.json [--date YYYY-MM-DD] [--force]
 
 drafts.json: {"concepts/foo": "lead markdown...", "thinkers/bar.md": "...", ...}
 Keys may be "type/slug", "type/slug.md", or a path relative to the wiki.
@@ -27,6 +27,8 @@ import json
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wiki_roots import default_wiki, require_wiki  # noqa: E402
 
 H2 = re.compile(r'^##\s', re.M)
 
@@ -72,11 +74,12 @@ def splice_one(path, lead, date_str, force):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--wiki", default="/Users/noahraford/magic/wiki")
+    ap.add_argument("--wiki", default=default_wiki())
     ap.add_argument("--input", required=True, help="JSON {page: lead_markdown}")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     ap.add_argument("--force", action="store_true", help="re-splice even if overview:true")
     args = ap.parse_args()
+    args.wiki = require_wiki(args.wiki)
 
     with open(args.input, encoding="utf-8") as fh:
         drafts = json.load(fh)

@@ -84,7 +84,7 @@ python3 -B ~/.claude/skills/research-wiki/scripts/publish_source_html.py \
 
 It copies `RESEARCH-REPORT_<slug>.html` → `literature-html/<slug>.html`, scrubbing
 two known deeper-research export defects: the `Research Bible` stamp (→ `Research
-Report`; the b-word is banned — see `magic/CLAUDE.md`) and the leaked
+Report`; the b-word is banned — see the project's `CLAUDE.md`) and the leaked
 `<section id="…shared-brief-for-all-section-subagents…">` briefing block + its TOC
 anchor. It REFUSES to write if "bible" survives. If the source has no HTML yet,
 note it and run this later once the HTML lands (then re-run `--full` so the text

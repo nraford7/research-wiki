@@ -149,9 +149,10 @@ The source documents are read-only. No command ever writes to, moves, or deletes
 
 ## Setup note
 
-The skill ships wired to one author's paths (`/Users/noahraford/magic/…`), but they are the *defaults*, not hardcoded assumptions:
+The skill is project-agnostic. It finds the wiki from the folder it is invoked in:
 
-- **The procedures** (`SKILL.md` + `references/`) reference two roots symbolically, `$WIKI_ROOT` and `$SOURCES_ROOT`. Retarget the whole skill by editing the two values in the **Roots** table at the top of `SKILL.md` — nothing else in the procedures hardcodes a path.
-- **The Python scripts** all take `--wiki` (and derive `<wiki>/literature-html`, `<wiki>/.literature-text`, etc. from it); `build_wiki_html.py` also takes `--title` to set the atlas masthead (or reads `title:` from the wiki's `about.md`). The path constants at the top of each script are only the defaults.
+- **Resolver:** `wiki_roots.py` walks up from the current folder and stops at the first `.research-wiki.json` (explicit `wiki` / `sources` paths), `wiki/index.md` (sources default to the sibling `deeper_research/`), or a folder that is itself a wiki. Run `python3 wiki_roots.py` to see what it resolves.
+- **The procedures** (`SKILL.md` + `references/`) reference the two roots symbolically, `$WIKI_ROOT` and `$SOURCES_ROOT`, filled from the resolver at the start of each operation. With no wiki found, the skill asks or bootstraps `./wiki`; it never falls back to another project.
+- **The Python scripts** all take `--wiki` (and derive `<wiki>/literature-html`, `<wiki>/.literature-text`, etc. from it); the default comes from the same resolver. `build_wiki_html.py` also takes `--title` to set the atlas masthead (or reads `title:` from the wiki's `about.md`).
 
 No API keys live in the code.
