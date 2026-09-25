@@ -20,6 +20,9 @@ USAGE
     exit 0 = all clean; exit 1 = one or more problems (printed).
 """
 import argparse, glob, importlib.util, os, re, sys
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wiki_roots import default_wiki, require_wiki  # noqa: E402
 
 LINK = re.compile(r"\[\[([^\]]+)\]\]")
 PIPE = re.compile(r"\[\[[^\]]*\|")
@@ -33,10 +36,11 @@ def _load_bw(skill_dir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--wiki", default="/Users/noahraford/magic/wiki")
+    ap.add_argument("--wiki", default=default_wiki())
     ap.add_argument("--min-words", type=int, default=600)
     ap.add_argument("--min-own", type=int, default=5)
     a = ap.parse_args()
+    a.wiki = require_wiki(a.wiki)
     skill_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bw = _load_bw(skill_dir)
     pages = bw.load_pages(a.wiki, {})

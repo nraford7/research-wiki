@@ -13,8 +13,9 @@ import os
 import re
 import subprocess
 import sys
+from wiki_roots import default_wiki, require_wiki
 
-WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+WIKI_DEFAULT = default_wiki()
 SEARCH_DEFAULT = os.path.expanduser("~/.claude/skills/semantic-search/search.py")
 
 
@@ -108,6 +109,7 @@ def main(argv=None):
     ap.add_argument("--search", default=SEARCH_DEFAULT,
                     help="path to the semantic-search helper (search.py)")
     a = ap.parse_args(argv)
+    a.wiki = require_wiki(a.wiki)
     corpus = os.path.join(a.wiki, ".literature-text")
     if not os.path.isfile(a.search):
         print(f"[match] error: semantic-search helper not found at {a.search} "

@@ -16,7 +16,7 @@ Use the map to **orient and locate**; then open the source and **answer from it*
    python3 -B ~/.claude/skills/semantic-search/search.py \
      --cwd $WIKI_ROOT/.literature-text "<the question>" --top 8
    ```
-   (If you specifically need to search the MAP instead, scope semantic-search to `$WIKI_ROOT` — never to `magic/` or anything under `$SOURCES_ROOT/`, per the read-only invariant.)
+   (If you specifically need to search the MAP instead, scope semantic-search to `$WIKI_ROOT` — never to the project root or anything under `$SOURCES_ROOT/`, per the read-only invariant.)
 3. **Read the source — do NOT skip this.** Open each `$WIKI_ROOT/.literature-text/<slug>.md` and read the actual sections: the primary prose and its original `[Author, Year]` citations. This is the step the map exists to deliver you to; skipping it is the failure mode this procedure exists to prevent.
 4. **Analyse and answer from the research documents.** Ground every claim in what the sections actually say; quote `[slug § heading]` from the primary text.
 

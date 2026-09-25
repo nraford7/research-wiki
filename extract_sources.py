@@ -14,12 +14,11 @@ import os
 import re
 
 from bs4 import BeautifulSoup
+from wiki_roots import default_wiki, require_wiki
 
-WIKI_DEFAULT = "/Users/noahraford/magic/wiki"
+WIKI_DEFAULT = default_wiki()
 # The two dirs are always <wiki>/literature-html and <wiki>/.literature-text.
 # --html-dir / --out override them explicitly; otherwise they derive from --wiki.
-HTML_DIR = os.path.join(WIKI_DEFAULT, "literature-html")
-OUT_DIR = os.path.join(WIKI_DEFAULT, ".literature-text")
 
 # Apparatus headings: anchored at start (so "Sources (this section)" drops but
 # the analytical "Internal tension the sources flag" does NOT), plus the
@@ -186,6 +185,7 @@ def main(argv=None):
     ap.add_argument("--resection", action="store_true",
                     help="inject section ids into the coarse sources' bundled HTML first")
     a = ap.parse_args(argv)
+    a.wiki = require_wiki(a.wiki)
     if a.html_dir is None:
         a.html_dir = os.path.join(a.wiki, "literature-html")
     if a.out is None:

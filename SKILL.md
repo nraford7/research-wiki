@@ -5,24 +5,35 @@ description: LLM-maintained research wiki over a research-source corpus (e.g. de
 
 # research-wiki
 
-An LLM-maintained research wiki over the book's research sources. It follows the Karpathy "LLM wiki" pattern: interlinked plain-markdown pages that sit between the reader and the raw sources, maintained incrementally by the model, with the human as editor-in-chief. Three layers: the **raw sources** under `$SOURCES_ROOT/` are read-only sources; the **wiki** at `$WIKI_ROOT/` is the LLM-maintained set of pages (literature, concepts, thinkers, debates, themes, answers); and **this skill** is the schema plus the procedures that keep the wiki correct and current.
+An LLM-maintained research wiki over a project's research sources. The skill is project-agnostic: it works on the wiki of whatever project it is invoked in. It follows the Karpathy "LLM wiki" pattern: interlinked plain-markdown pages that sit between the reader and the raw sources, maintained incrementally by the model, with the human as editor-in-chief. Three layers: the **raw sources** under `$SOURCES_ROOT/` are read-only sources; the **wiki** at `$WIKI_ROOT/` is the LLM-maintained set of pages (literature, concepts, thinkers, debates, themes, answers); and **this skill** is the schema plus the procedures that keep the wiki correct and current.
 
-The literature live two levels deep: `$SOURCES_ROOT/<chapter-dir>/<source-dir>/` (e.g. `2_Chapter 2/ch2-q4-ritual-nonhuman-powers/`). The wiki compounds: each `ingest` adds a source's concepts and positions; each `analyze` finds where sources agree, disagree, and cluster into emergent themes; each `ask` orients on the accumulated pages, reads the underlying source, and can file the answer back so explorations accumulate rather than evaporate. Everything is plain markdown you can read in Obsidian.
+Sources live one or two levels deep under `$SOURCES_ROOT/` (e.g. `<run>/` or `<chapter-dir>/<source-dir>/`). The wiki compounds: each `ingest` adds a source's concepts and positions; each `analyze` finds where sources agree, disagree, and cluster into emergent themes; each `ask` orients on the accumulated pages, reads the underlying source, and can file the answer back so explorations accumulate rather than evaporate. Everything is plain markdown you can read in Obsidian.
 
 ## Reading discipline: the wiki is a MAP, the research documents are the SOURCE
 
 For `ask` and any "read/check the wiki" request: the wiki pages (`concepts/`, `thinkers/`, `debates/`, `themes/`) are a **MAP** — distilled summaries. The full research-document text in `$WIKI_ROOT/.literature-text/*.md` is the **SOURCE**. *(Mnemonic: the wiki is the map; the research documents are the ground it maps.)* Use the map to orient and to locate the right sections, then **READ and ANSWER from the source** — never answer from a map page's summary when the source is one `Read` away. If a request looks map-only, ask the user whether they want a quick map summary or a source-grounded deep dive before answering. Full procedure in `references/ask.md`.
 
-## Roots
+## Roots — resolved from the folder you are invoked in
 
-Every command block in this skill and its `references/` uses two roots, written symbolically. **To point the skill at a different wiki or a different source corpus, edit only these two values — nothing else in the skill hardcodes a path.**
+The skill never hardcodes a project. **First step of every operation:** resolve the two roots from the current working directory:
 
-| Placeholder | Value (edit here to retarget) | What it is |
+```bash
+python3 ~/.claude/skills/research-wiki/wiki_roots.py
+```
+
+It walks up from the current folder and stops at the first match: a `.research-wiki.json` (explicit `{"wiki": ..., "sources": ...}`, paths relative to that file), else a `wiki/index.md` (wiki = `<dir>/wiki`, sources = `<dir>/deeper_research`), else a folder that is itself a wiki. It prints JSON `{"project", "wiki", "sources", "via"}`.
+
+| Placeholder | Value | What it is |
 |---|---|---|
-| `$WIKI_ROOT` | `/Users/noahraford/magic/wiki` | the LLM-maintained wiki (writable) |
-| `$SOURCES_ROOT` | `/Users/noahraford/magic/deeper_research` | the read-only research-source corpus |
+| `$WIKI_ROOT` | the resolver's `wiki` | the LLM-maintained wiki (writable) |
+| `$SOURCES_ROOT` | the resolver's `sources` | the read-only research-source corpus |
 
-**How to use them:** wherever a command below shows `$WIKI_ROOT` or `$SOURCES_ROOT`, substitute the literal value from this table when you run it. These are not exported shell variables (the shell resets between tool calls), so expand them yourself in each command. Before running the read-only proof in the Safety invariants, confirm `$SOURCES_ROOT` resolves to a real directory — an empty/unresolved value would make the proof pass falsely.
+**Rules:**
+- State the resolved project once at the start ("Using the wiki at …").
+- Substitute the literal paths into every command (the shell resets between tool calls; these are not exported variables).
+- **No wiki found (exit 1):** stop and ask. Offer to bootstrap a new wiki at `<cwd>/wiki` (see First run). **Never fall back to another project's wiki.**
+- **`sources` is null:** ask the user where the research sources live, then offer to write a `.research-wiki.json` in the project root so it resolves next time. Before any read-only proof, confirm `$SOURCES_ROOT` is a real directory — an empty value would make the proof pass falsely.
+- The Python scripts use the same resolver as their `--wiki` default; an explicit `--wiki` always wins.
 
 ## Safety invariants
 
@@ -34,7 +45,7 @@ These are non-negotiable and apply to every operation:
 - **Merge rule is section-scoped replace:** ingesting source B writes or replaces ONLY the `## In <B>` section of a concept/thinker page; it never touches other sources' sections or the page preamble. This makes re-ingest (`--force`) safe and duplicate-free.
 - **Single-session operation.** Do not run two ingests/analyzes concurrently (last-writer-wins on `log.md`).
 - **Absolute paths everywhere.** Always use the `$WIKI_ROOT`/`$SOURCES_ROOT` values from the Roots table; never rely on a prior `cd` (the shell cwd resets between calls).
-- **Version control is scoped to the wiki ONLY:** `git init` inside `$WIKI_ROOT`, NEVER at `magic/` scope — that would place the read-only sources inside a repo whose rollback commands could write or delete under them.
+- **Version control is scoped to the wiki ONLY:** `git init` inside `$WIKI_ROOT`, NEVER at the project scope above it — that would place the read-only sources inside a repo whose rollback commands could write or delete under them.
 - **Shell is zsh:** never use bare globs that may not match (zsh aborts the whole command on a no-match). Always use `find` with `-name`/`-iname`.
 
 ## Command dispatch
@@ -51,7 +62,7 @@ Always read the relevant reference file before acting; the procedures carry the 
 
 ## First run (bootstrap)
 
-If `$WIKI_ROOT/` does not exist, create it before the first ingest:
+If the resolver finds no wiki and the user agrees to start one, create it at `<cwd>/wiki` (with sources at `<cwd>/deeper_research`, or record their real location in `<cwd>/.research-wiki.json`) before the first ingest:
 
 ```bash
 mkdir -p $WIKI_ROOT/{literature,concepts,thinkers,debates,themes,answers,reports}
